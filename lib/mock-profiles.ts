@@ -1,0 +1,96 @@
+import type { Profile } from "@/components/profile-card"
+
+export const mockProfiles: Profile[] = [
+  {
+    id: "1",
+    nombre: "María",
+    edad: 22,
+    genero: "femenino",
+    bio: "Estudiante de Derecho. Me encanta el café, los libros y las largas conversaciones. Buscando alguien con quien compartir aventuras.",
+    fotos: ["/young-woman-smiling-university-student.jpg", "/young-woman-reading-book-coffee-shop.jpg"],
+    intereses: ["lectura", "café", "derecho", "viajes"],
+    atributosFisicos: {
+      colorOjos: "verde",
+      colorCabello: "castaño",
+      carrera: "Derecho",
+    },
+    hasLikedYou: true,
+  },
+  {
+    id: "2",
+    nombre: "Carlos",
+    edad: 23,
+    genero: "masculino",
+    bio: "Ingeniero en formación. Apasionado por la tecnología y el deporte. Siempre listo para una buena conversación o un partido de fútbol.",
+    fotos: ["/young-man-smiling-university-student-casual.jpg", "/young-man-playing-soccer-sports.jpg"],
+    intereses: ["tecnología", "fútbol", "música", "cine"],
+    atributosFisicos: {
+      colorOjos: "marrón",
+      colorCabello: "negro",
+      carrera: "Ingeniería Civil",
+    },
+    hasLikedYou: false,
+  },
+  {
+    id: "3",
+    nombre: "Sofía",
+    edad: 21,
+    genero: "femenino",
+    bio: "Futura psicóloga. Me fascina entender la mente humana. Amo el arte, la música indie y los atardeceres en el campus.",
+    fotos: ["/young-woman-artistic-university-student.jpg", "/young-woman-sunset-campus.jpg"],
+    intereses: ["psicología", "arte", "música indie", "fotografía"],
+    atributosFisicos: {
+      colorOjos: "azul",
+      colorCabello: "rubio",
+      carrera: "Psicología",
+    },
+    hasLikedYou: true,
+  },
+  {
+    id: "4",
+    nombre: "Diego",
+    edad: 24,
+    genero: "masculino",
+    bio: "Estudiante de Administración. Emprendedor de corazón. Me gusta el gym, los negocios y conocer gente interesante.",
+    fotos: ["/young-man-business-student-confident.jpg", "/young-man-gym-fitness.jpg"],
+    intereses: ["negocios", "gym", "emprendimiento", "networking"],
+    atributosFisicos: {
+      colorOjos: "marrón",
+      colorCabello: "castaño",
+      carrera: "Administración de Empresas",
+    },
+    hasLikedYou: false,
+  },
+  {
+    id: "5",
+    nombre: "Valentina",
+    edad: 20,
+    genero: "femenino",
+    bio: "Comunicadora social en proceso. Amo escribir, las redes sociales y crear contenido. Siempre con una sonrisa y buena vibra.",
+    fotos: ["/young-woman-content-creator-smiling.jpg", "/young-woman-taking-photos-social-media.jpg"],
+    intereses: ["comunicación", "redes sociales", "escritura", "fotografía"],
+    atributosFisicos: {
+      colorOjos: "marrón",
+      colorCabello: "negro",
+      carrera: "Comunicación Social",
+    },
+    hasLikedYou: true,
+  },
+  {
+    id: "6",
+    nombre: "Alejandro",
+    edad: 22,
+    genero: "masculino",
+    bio: "Estudiante de Medicina. Futuro doctor con pasión por ayudar. Me gusta estudiar, pero también sé divertirme. Amante de la buena comida.",
+    fotos: ["/young-man-medical-student.jpg", "/young-man-studying-library.jpg"],
+    intereses: ["medicina", "ciencia", "comida", "series"],
+    atributosFisicos: {
+      colorOjos: "verde",
+      colorCabello: "castaño claro",
+      carrera: "Medicina",
+    },
+    hasLikedYou: false,
+  },
+]
+
+export const currentUserPhoto = "/university-student-profile-photo.jpg"
