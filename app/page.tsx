@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { ProfileCard, type Profile } from "@/components/profile-card"
 import { MatchModal } from "@/components/match-modal"
 import { mockProfiles, currentUserPhoto } from "@/lib/mock-profiles"
 
 export default function HomePage() {
+  const router = useRouter()
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
@@ -16,6 +18,15 @@ export default function HomePage() {
   const [displayedProfile, setDisplayedProfile] = useState<Profile>(profiles[0])
 
   const currentProfile = profiles[currentIndex]
+
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem("isAuthenticated")
+    if (isAuthenticated === "true") {
+      router.push("/descubrir")
+    } else {
+      router.push("/auth")
+    }
+  }, [router])
 
   const handleLike = () => {
     setSwipeDirection("right")
