@@ -98,26 +98,26 @@ export default function PerfilPage() {
         const parseDate = (v: any): Date | undefined => {
           if (!v) return undefined
           if (v instanceof Date) return v
-          if (typeof v === 'string') {
+          if (typeof v === "string") {
             const d = new Date(v)
             return isNaN(d.getTime()) ? undefined : d
           }
-          if (typeof v === 'object') {
+          if (typeof v === "object") {
             // Mongo extended JSON formats
-            if ('$date' in v) {
+            if ("$date" in v) {
               const d = v.$date
-              if (typeof d === 'string') {
+              if (typeof d === "string") {
                 const dd = new Date(d)
                 return isNaN(dd.getTime()) ? undefined : dd
               }
-              if (typeof d === 'object' && ('$numberLong' in d || '$numberLong' in v)) {
+              if (typeof d === "object" && ("$numberLong" in d || "$numberLong" in v)) {
                 const num = Number(d.$numberLong ?? v.$numberLong)
                 const dd = new Date(num)
                 return isNaN(dd.getTime()) ? undefined : dd
               }
             }
             // older shape: { $date: { $numberLong: '...' } }
-            if (v.$date && typeof v.$date === 'object' && '$numberLong' in v.$date) {
+            if (v.$date && typeof v.$date === "object" && "$numberLong" in v.$date) {
               const num = Number(v.$date.$numberLong)
               const dd = new Date(num)
               return isNaN(dd.getTime()) ? undefined : dd
@@ -128,17 +128,17 @@ export default function PerfilPage() {
 
         const parseNumber = (v: any): number | undefined => {
           if (v == null) return undefined
-          if (typeof v === 'number') return v
-          if (typeof v === 'string' && !isNaN(Number(v))) return Number(v)
-          if (typeof v === 'object') {
-            if ('$numberInt' in v) return Number(v.$numberInt)
-            if ('$numberLong' in v) return Number(v.$numberLong)
+          if (typeof v === "number") return v
+          if (typeof v === "string" && !isNaN(Number(v))) return Number(v)
+          if (typeof v === "object") {
+            if ("$numberInt" in v) return Number(v.$numberInt)
+            if ("$numberLong" in v) return Number(v.$numberLong)
           }
           return undefined
         }
 
         const fechaN = parseDate(src?.fechaNacimiento ?? src?.perfil?.fechaNacimiento ?? src?.fecha_nacimiento)
-        const edad = fechaN ? calculateAge(fechaN) : src?.edad ?? undefined
+        const edad = fechaN ? calculateAge(fechaN) : (src?.edad ?? undefined)
 
         const atributos = src?.atributosFisicos ?? src ?? {}
         const preferencias = src?.preferencias ?? src ?? {}
@@ -146,8 +146,8 @@ export default function PerfilPage() {
         const generoBuscado = Array.isArray(preferencias?.generoBuscado)
           ? preferencias.generoBuscado
           : Array.isArray(src?.generoBuscado)
-          ? src.generoBuscado
-          : []
+            ? src.generoBuscado
+            : []
 
         const rango = preferencias?.rangoEdad ?? src?.rangoEdad ?? {}
         const edadMin = parseNumber(rango?.min ?? rango?.min?.$numberInt ?? preferencias?.edadMinima) ?? undefined
@@ -157,34 +157,34 @@ export default function PerfilPage() {
           ...emptyProfile,
           ...src,
           // prefer email from root raw if perfil doesn't include it
-          email: raw?.email ?? src?.email ?? '',
+          email: raw?.email ?? src?.email ?? "",
           fotos: Array.isArray(src?.fotos) ? src.fotos : [],
           intereses: Array.isArray(src?.intereses) ? src.intereses : [],
-          colorOjos: atributos?.colorOjos ?? atributos?.color_ojos ?? '',
-          colorCabello: atributos?.colorCabello ?? atributos?.color_cabello ?? '',
+          colorOjos: atributos?.colorOjos ?? atributos?.color_ojos ?? "",
+          colorCabello: atributos?.colorCabello ?? atributos?.color_cabello ?? "",
           preferencias: {
             // generoBuscado ahora puede ser string o array; normalizamos a string
             generoBuscado: Array.isArray(preferencias?.generoBuscado)
-              ? preferencias.generoBuscado.join(', ')
-              : typeof preferencias?.generoBuscado === 'string'
-              ? preferencias.generoBuscado
-              : typeof src?.generoBuscado === 'string'
-              ? src.generoBuscado
-              : Array.isArray(src?.generoBuscado)
-              ? src.generoBuscado.join(', ')
-              : '',
+              ? preferencias.generoBuscado.join(", ")
+              : typeof preferencias?.generoBuscado === "string"
+                ? preferencias.generoBuscado
+                : typeof src?.generoBuscado === "string"
+                  ? src.generoBuscado
+                  : Array.isArray(src?.generoBuscado)
+                    ? src.generoBuscado.join(", ")
+                    : "",
             rangoEdad: { min: edadMin, max: edadMax },
-            preferenciaCarrera: preferencias?.preferenciaCarrera ?? preferencias?.carreraPref ?? ''
+            preferenciaCarrera: preferencias?.preferenciaCarrera ?? preferencias?.carreraPref ?? "",
           },
           generoPreferido:
-            typeof preferencias?.generoBuscado === 'string'
+            typeof preferencias?.generoBuscado === "string"
               ? preferencias.generoBuscado
               : Array.isArray(preferencias?.generoBuscado)
-              ? preferencias.generoBuscado.join(', ')
-              : '',
+                ? preferencias.generoBuscado.join(", ")
+                : "",
           edadMinima: edadMin,
           edadMaxima: edadMax,
-          carreraPreferida: preferencias?.preferenciaCarrera ?? '',
+          carreraPreferida: preferencias?.preferenciaCarrera ?? "",
           fechaNacimientoISO: fechaN ? fechaN.toISOString() : undefined,
           edad: edad,
         }
@@ -304,11 +304,14 @@ export default function PerfilPage() {
             <div className="space-y-4">
               <h2 className="text-xl font-semibold text-ucab-maroon">Fotos</h2>
               {isEditing ? (
-                <ImageUpload photos={editData?.fotos ?? []} onPhotosChange={(photos) => updateEditData("fotos", photos)} />
+                <ImageUpload
+                  photos={editData?.fotos ?? []}
+                  onPhotosChange={(photos) => updateEditData("fotos", photos)}
+                />
               ) : (
                 <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100">
                   <img
-                    src={(userData?.fotos?.[currentImageIndex]) ?? "/placeholder.svg"}
+                    src={userData?.fotos?.[currentImageIndex] ?? "/placeholder.svg"}
                     alt={`Foto ${currentImageIndex + 1}`}
                     className="h-full w-full object-cover"
                   />
@@ -398,18 +401,7 @@ export default function PerfilPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Edad</Label>
-                    {isEditing ? (
-                      <Input
-                        type="number"
-                        min="18"
-                        max="99"
-                        value={editData.edad}
-                        onChange={(e) => updateEditData("edad", e.target.value)}
-                        required
-                      />
-                    ) : (
-                      <p className="text-lg">{userData.edad} años</p>
-                    )}
+                    <p className="text-lg">{userData.edad} años</p>
                   </div>
 
                   <div className="space-y-2">
