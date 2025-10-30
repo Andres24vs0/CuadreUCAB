@@ -19,6 +19,8 @@ export default function DescubrirPage() {
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
+    console.log("[v0] Descubrir auth check:", isAuthenticated)
+
     if (isAuthenticated !== "true") {
       router.push("/auth")
     }

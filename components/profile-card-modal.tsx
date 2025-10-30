@@ -5,6 +5,7 @@ import type { Profile } from "@/components/profile-card"
 import Image from "next/image"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { useState, useEffect } from "react"
+import { calculateAge, getZodiacSign } from "@/lib/zodiac-utils"
 
 interface ProfileCardModalProps {
   profile: Profile | null
@@ -20,6 +21,9 @@ export function ProfileCardModal({ profile, open, onOpenChange }: ProfileCardMod
   }, [profile])
 
   if (!profile) return null
+
+  const edad = calculateAge(new Date(profile.fechaNacimiento))
+  const zodiac = getZodiacSign(new Date(profile.fechaNacimiento))
 
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % profile.fotos.length)
@@ -76,7 +80,7 @@ export function ProfileCardModal({ profile, open, onOpenChange }: ProfileCardMod
           <div className="flex flex-1 flex-col overflow-y-auto bg-white p-6">
             <div className="mb-4">
               <h2 className="text-3xl font-bold text-ucab-maroon">
-                {profile.nombre}, {profile.edad}
+                {profile.nombre}, {edad}
               </h2>
               <p className="text-lg text-ucab-golden">{profile.atributosFisicos.carrera}</p>
             </div>
@@ -84,6 +88,14 @@ export function ProfileCardModal({ profile, open, onOpenChange }: ProfileCardMod
             <div className="mb-4">
               <h3 className="mb-2 text-base font-semibold text-ucab-maroon">Sobre mí</h3>
               <p className="leading-relaxed text-foreground">{profile.bio}</p>
+            </div>
+
+            <div className="mb-4">
+              <h3 className="mb-2 text-base font-semibold text-ucab-maroon">Signo Zodiacal</h3>
+              <div className="flex items-center gap-2 text-lg">
+                <span className="text-2xl">{zodiac.symbol}</span>
+                <span className="font-medium text-foreground">{zodiac.name}</span>
+              </div>
             </div>
 
             <div className="mb-4">

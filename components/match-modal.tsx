@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Heart, MessageCircle, Sparkles } from "lucide-react"
 import Image from "next/image"
 import type { Profile } from "./profile-card"
+import { useRouter } from "next/navigation"
+import { existingChats } from "@/lib/mock-chats"
 
 interface MatchModalProps {
   isOpen: boolean
@@ -14,11 +16,21 @@ interface MatchModalProps {
 }
 
 export function MatchModal({ isOpen, onClose, matchedProfile, currentUserPhoto }: MatchModalProps) {
+  const router = useRouter()
+
   if (!matchedProfile) return null
 
   const handleGoToChat = () => {
-    // Navigate to chat
-    window.location.href = `/chats/${matchedProfile.id}`
+    const existingChat = existingChats.find((chat) => chat.profile.id === matchedProfile.id)
+
+    if (existingChat) {
+      router.push(`/chats/${existingChat.id}`)
+    } else {
+      // Create new chat ID
+      const newChatId = `chat-${matchedProfile.id}`
+      router.push(`/chats/${newChatId}`)
+    }
+    onClose()
   }
 
   const handleKeepDiscovering = () => {

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { InterestsSelector } from "@/components/interests-selector"
 import { ImageUpload } from "@/components/image-upload"
+import { isAtLeast18YearsOld } from "@/lib/zodiac-utils"
 
 const carreras = [
   "Industrial",
@@ -68,7 +69,7 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
     password: "",
     confirmPassword: "",
     nombre: "",
-    edad: "",
+    fechaNacimiento: "",
     genero: "",
     bio: "",
     carrera: "",
@@ -99,6 +100,17 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
 
     if (formData.password.length < 8) {
       setError("La contraseña debe tener al menos 8 caracteres")
+      return
+    }
+
+    if (!formData.fechaNacimiento) {
+      setError("Debes ingresar tu fecha de nacimiento")
+      return
+    }
+
+    const birthDate = new Date(formData.fechaNacimiento)
+    if (!isAtLeast18YearsOld(birthDate)) {
+      setError("Debes tener al menos 18 años para registrarte")
       return
     }
 
@@ -211,15 +223,13 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
 
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="edad">Edad *</Label>
+            <Label htmlFor="fechaNacimiento">Fecha de Nacimiento *</Label>
             <Input
-              id="edad"
-              type="number"
-              min="18"
-              max="99"
-              placeholder="18"
-              value={formData.edad}
-              onChange={(e) => updateFormData("edad", e.target.value)}
+              id="fechaNacimiento"
+              type="date"
+              max={new Date().toISOString().split("T")[0]}
+              value={formData.fechaNacimiento}
+              onChange={(e) => updateFormData("fechaNacimiento", e.target.value)}
               required
             />
           </div>

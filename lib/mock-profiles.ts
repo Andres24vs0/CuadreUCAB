@@ -4,7 +4,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "1",
     nombre: "María",
-    edad: 22,
+    fechaNacimiento: "2003-03-15",
     genero: "femenino",
     bio: "Estudiante de Derecho. Me encanta el café, los libros y las largas conversaciones. Buscando alguien con quien compartir aventuras.",
     fotos: ["/young-woman-smiling-university-student.jpg", "/young-woman-reading-book-coffee-shop.jpg"],
@@ -19,7 +19,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "2",
     nombre: "Carlos",
-    edad: 23,
+    fechaNacimiento: "2002-07-22",
     genero: "masculino",
     bio: "Ingeniero en formación. Apasionado por la tecnología y el deporte. Siempre listo para una buena conversación o un partido de fútbol.",
     fotos: ["/young-man-smiling-university-student-casual.jpg", "/young-man-playing-soccer-sports.jpg"],
@@ -34,7 +34,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "3",
     nombre: "Sofía",
-    edad: 21,
+    fechaNacimiento: "2004-11-08",
     genero: "femenino",
     bio: "Futura psicóloga. Me fascina entender la mente humana. Amo el arte, la música indie y los atardeceres en el campus.",
     fotos: ["/young-woman-artistic-university-student.jpg", "/young-woman-sunset-campus.jpg"],
@@ -49,7 +49,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "4",
     nombre: "Diego",
-    edad: 24,
+    fechaNacimiento: "2001-05-30",
     genero: "masculino",
     bio: "Estudiante de Administración. Emprendedor de corazón. Me gusta el gym, los negocios y conocer gente interesante.",
     fotos: ["/young-man-business-student-confident.jpg", "/young-man-gym-fitness.jpg"],
@@ -64,7 +64,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "5",
     nombre: "Valentina",
-    edad: 20,
+    fechaNacimiento: "2005-01-12",
     genero: "femenino",
     bio: "Comunicadora social en proceso. Amo escribir, las redes sociales y crear contenido. Siempre con una sonrisa y buena vibra.",
     fotos: ["/young-woman-content-creator-smiling.jpg", "/young-woman-taking-photos-social-media.jpg"],
@@ -79,7 +79,7 @@ export const mockProfiles: Profile[] = [
   {
     id: "6",
     nombre: "Alejandro",
-    edad: 22,
+    fechaNacimiento: "2003-09-18",
     genero: "masculino",
     bio: "Estudiante de Medicina. Futuro doctor con pasión por ayudar. Me gusta estudiar, pero también sé divertirme. Amante de la buena comida.",
     fotos: ["/young-man-medical-student.jpg", "/young-man-studying-library.jpg"],

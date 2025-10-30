@@ -6,11 +6,12 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Heart, X, Briefcase, Sparkles, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { calculateAge, getZodiacSign } from "@/lib/zodiac-utils"
 
 export interface Profile {
   id: string
   nombre: string
-  edad: number
+  fechaNacimiento: string
   genero: string
   bio: string
   fotos: string[]
@@ -32,6 +33,9 @@ interface ProfileCardProps {
 
 export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: ProfileCardProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+
+  const edad = calculateAge(new Date(profile.fechaNacimiento))
+  const zodiac = getZodiacSign(new Date(profile.fechaNacimiento))
 
   useEffect(() => {
     setCurrentPhotoIndex(0)
@@ -119,9 +123,9 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
           <div>
             <div className="mb-4 flex items-center gap-3">
               <h2 className="text-4xl font-bold text-balance">
-                {profile.nombre}, {profile.edad}
+                {profile.nombre}, {edad}
               </h2>
-              {profile.hasLikedYou && <Sparkles className="h-7 w-7 flex-shrink-0 fill-secondary text-secondary" />}
+              <Sparkles className="h-7 w-7 flex-shrink-0 fill-secondary text-secondary" />
             </div>
 
             <div className="mb-6 flex items-center gap-2 text-muted-foreground">
@@ -132,6 +136,16 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
             <div className="mb-6">
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Sobre mí</h3>
               <p className="text-base leading-relaxed text-balance">{profile.bio}</p>
+            </div>
+
+            <div className="mb-6">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Signo Zodiacal
+              </h3>
+              <div className="flex items-center gap-2 text-lg">
+                <span className="text-2xl">{zodiac.symbol}</span>
+                <span className="font-medium">{zodiac.name}</span>
+              </div>
             </div>
 
             <div className="mb-6">
