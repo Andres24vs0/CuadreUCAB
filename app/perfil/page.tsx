@@ -12,6 +12,7 @@ import { InterestsSelector } from "@/components/interests-selector"
 import { ImageUpload } from "@/components/image-upload"
 import { Edit, LogOut } from "lucide-react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { calculateAge } from "@/lib/zodiac-utils"
 
 const carreras = [
   "Industrial",
@@ -68,6 +69,19 @@ export default function PerfilPage() {
   const [editData, setEditData] = useState<any>(null)
   const [error, setError] = useState("")
 
+  const emptyProfile = {
+    fotos: [] as string[],
+    intereses: [] as string[],
+    nombre: "",
+    email: "",
+    edad: undefined,
+    genero: "",
+    carrera: "",
+    bio: "",
+    colorOjos: "",
+    colorCabello: "",
+  }
+
   useEffect(() => {
     const userEmail = localStorage.getItem("userEmail")
     if (!userEmail) {
@@ -77,9 +91,113 @@ export default function PerfilPage() {
 
     const storedData = localStorage.getItem("userData")
     if (storedData) {
-      const data = JSON.parse(storedData)
-      setUserData(data)
-      setEditData(data)
+      try {
+        const raw = JSON.parse(storedData)
+        const src = raw?.perfil ?? raw
+
+        const parseDate = (v: any): Date | undefined => {
+          if (!v) return undefined
+          if (v instanceof Date) return v
+          if (typeof v === 'string') {
+            const d = new Date(v)
+            return isNaN(d.getTime()) ? undefined : d
+          }
+          if (typeof v === 'object') {
+            // Mongo extended JSON formats
+            if ('$date' in v) {
+              const d = v.$date
+              if (typeof d === 'string') {
+                const dd = new Date(d)
+                return isNaN(dd.getTime()) ? undefined : dd
+              }
+              if (typeof d === 'object' && ('$numberLong' in d || '$numberLong' in v)) {
+                const num = Number(d.$numberLong ?? v.$numberLong)
+                const dd = new Date(num)
+                return isNaN(dd.getTime()) ? undefined : dd
+              }
+            }
+            // older shape: { $date: { $numberLong: '...' } }
+            if (v.$date && typeof v.$date === 'object' && '$numberLong' in v.$date) {
+              const num = Number(v.$date.$numberLong)
+              const dd = new Date(num)
+              return isNaN(dd.getTime()) ? undefined : dd
+            }
+          }
+          return undefined
+        }
+
+        const parseNumber = (v: any): number | undefined => {
+          if (v == null) return undefined
+          if (typeof v === 'number') return v
+          if (typeof v === 'string' && !isNaN(Number(v))) return Number(v)
+          if (typeof v === 'object') {
+            if ('$numberInt' in v) return Number(v.$numberInt)
+            if ('$numberLong' in v) return Number(v.$numberLong)
+          }
+          return undefined
+        }
+
+        const fechaN = parseDate(src?.fechaNacimiento ?? src?.perfil?.fechaNacimiento ?? src?.fecha_nacimiento)
+        const edad = fechaN ? calculateAge(fechaN) : src?.edad ?? undefined
+
+        const atributos = src?.atributosFisicos ?? src ?? {}
+        const preferencias = src?.preferencias ?? src ?? {}
+
+        const generoBuscado = Array.isArray(preferencias?.generoBuscado)
+          ? preferencias.generoBuscado
+          : Array.isArray(src?.generoBuscado)
+          ? src.generoBuscado
+          : []
+
+        const rango = preferencias?.rangoEdad ?? src?.rangoEdad ?? {}
+        const edadMin = parseNumber(rango?.min ?? rango?.min?.$numberInt ?? preferencias?.edadMinima) ?? undefined
+        const edadMax = parseNumber(rango?.max ?? rango?.max?.$numberInt ?? preferencias?.edadMaxima) ?? undefined
+
+        const normalized = {
+          ...emptyProfile,
+          ...src,
+          // prefer email from root raw if perfil doesn't include it
+          email: raw?.email ?? src?.email ?? '',
+          fotos: Array.isArray(src?.fotos) ? src.fotos : [],
+          intereses: Array.isArray(src?.intereses) ? src.intereses : [],
+          colorOjos: atributos?.colorOjos ?? atributos?.color_ojos ?? '',
+          colorCabello: atributos?.colorCabello ?? atributos?.color_cabello ?? '',
+          preferencias: {
+            // generoBuscado ahora puede ser string o array; normalizamos a string
+            generoBuscado: Array.isArray(preferencias?.generoBuscado)
+              ? preferencias.generoBuscado.join(', ')
+              : typeof preferencias?.generoBuscado === 'string'
+              ? preferencias.generoBuscado
+              : typeof src?.generoBuscado === 'string'
+              ? src.generoBuscado
+              : Array.isArray(src?.generoBuscado)
+              ? src.generoBuscado.join(', ')
+              : '',
+            rangoEdad: { min: edadMin, max: edadMax },
+            preferenciaCarrera: preferencias?.preferenciaCarrera ?? preferencias?.carreraPref ?? ''
+          },
+          generoPreferido:
+            typeof preferencias?.generoBuscado === 'string'
+              ? preferencias.generoBuscado
+              : Array.isArray(preferencias?.generoBuscado)
+              ? preferencias.generoBuscado.join(', ')
+              : '',
+          edadMinima: edadMin,
+          edadMaxima: edadMax,
+          carreraPreferida: preferencias?.preferenciaCarrera ?? '',
+          fechaNacimientoISO: fechaN ? fechaN.toISOString() : undefined,
+          edad: edad,
+        }
+        setUserData(normalized)
+        setEditData(normalized)
+      } catch (e) {
+        console.error("Error parsing userData from localStorage", e)
+        setUserData(emptyProfile)
+        setEditData(emptyProfile)
+      }
+    } else {
+      setUserData(emptyProfile)
+      setEditData(emptyProfile)
     }
   }, [router])
 
@@ -101,12 +219,12 @@ export default function PerfilPage() {
       return
     }
 
-    if (editData.intereses.length === 0) {
+    if (!Array.isArray(editData?.intereses) || editData.intereses.length === 0) {
       setError("Debes seleccionar al menos un interés")
       return
     }
 
-    if (editData.fotos.length !== 2) {
+    if (!Array.isArray(editData?.fotos) || editData.fotos.length !== 2) {
       setError("Debes tener exactamente 2 fotos")
       return
     }
@@ -186,19 +304,19 @@ export default function PerfilPage() {
             <div className="space-y-4">
               <h2 className="text-xl font-semibold text-ucab-maroon">Fotos</h2>
               {isEditing ? (
-                <ImageUpload photos={editData.fotos} onPhotosChange={(photos) => updateEditData("fotos", photos)} />
+                <ImageUpload photos={editData?.fotos ?? []} onPhotosChange={(photos) => updateEditData("fotos", photos)} />
               ) : (
                 <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100">
                   <img
-                    src={userData.fotos[currentImageIndex] || "/placeholder.svg"}
+                    src={(userData?.fotos?.[currentImageIndex]) ?? "/placeholder.svg"}
                     alt={`Foto ${currentImageIndex + 1}`}
                     className="h-full w-full object-cover"
                   />
-                  {userData.fotos.length > 1 && (
+                  {(userData?.fotos?.length ?? 0) > 1 && (
                     <>
                       <button
                         onClick={() =>
-                          setCurrentImageIndex((prev) => (prev === 0 ? userData.fotos.length - 1 : prev - 1))
+                          setCurrentImageIndex((prev) => (prev === 0 ? (userData?.fotos?.length ?? 1) - 1 : prev - 1))
                         }
                         className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-lg hover:bg-white"
                       >
@@ -206,14 +324,14 @@ export default function PerfilPage() {
                       </button>
                       <button
                         onClick={() =>
-                          setCurrentImageIndex((prev) => (prev === userData.fotos.length - 1 ? 0 : prev + 1))
+                          setCurrentImageIndex((prev) => (prev === (userData?.fotos?.length ?? 1) - 1 ? 0 : prev + 1))
                         }
                         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-lg hover:bg-white"
                       >
                         <ChevronRight className="h-6 w-6 text-ucab-maroon" />
                       </button>
                       <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-                        {userData.fotos.map((_: any, idx: number) => (
+                        {(userData?.fotos ?? []).map((_: any, idx: number) => (
                           <button
                             key={idx}
                             onClick={() => setCurrentImageIndex(idx)}

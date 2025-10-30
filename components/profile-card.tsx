@@ -32,21 +32,27 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: ProfileCardProps) {
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+  const fotos = Array.isArray(profile?.fotos) ? profile.fotos : []
+    const intereses = Array.isArray(profile?.intereses) ? profile.intereses : []
+    const atributos = profile?.atributosFisicos ?? { colorOjos: '', colorCabello: '', carrera: '' }
 
-  const edad = calculateAge(new Date(profile.fechaNacimiento))
-  const zodiac = getZodiacSign(new Date(profile.fechaNacimiento))
+    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
 
-  useEffect(() => {
-    setCurrentPhotoIndex(0)
-  }, [profile.id])
+    const edad = profile?.fechaNacimiento ? calculateAge(new Date(profile.fechaNacimiento)) : undefined
+    const zodiac = profile?.fechaNacimiento ? getZodiacSign(new Date(profile.fechaNacimiento)) : { symbol: '', name: '' }
 
-  const nextPhoto = () => {
-    setCurrentPhotoIndex((prev) => (prev + 1) % profile.fotos.length)
-  }
+    useEffect(() => {
+      setCurrentPhotoIndex(0)
+    }, [profile?.id])
+
+    const nextPhoto = () => {
+      if (fotos.length === 0) return
+      setCurrentPhotoIndex((prev) => (prev + 1) % fotos.length)
+    }
 
   const prevPhoto = () => {
-    setCurrentPhotoIndex((prev) => (prev - 1 + profile.fotos.length) % profile.fotos.length)
+      if (fotos.length === 0) return
+      setCurrentPhotoIndex((prev) => (prev - 1 + fotos.length) % fotos.length)
   }
 
   const getSwipeClasses = () => {
@@ -64,16 +70,16 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
       <div className="grid grid-cols-1 lg:grid-cols-2">
         {/* Photo Section - Left Side */}
         <div className="relative aspect-[3/4] lg:aspect-auto lg:min-h-[600px]">
-          <Image
-            src={profile.fotos[currentPhotoIndex] || "/placeholder.svg"}
-            alt={`${profile.nombre} - Foto ${currentPhotoIndex + 1}`}
-            fill
-            className="object-cover"
-            priority
-          />
+            <Image
+              src={fotos[currentPhotoIndex] || "/placeholder.svg"}
+              alt={`${profile?.nombre ?? 'Perfil'} - Foto ${currentPhotoIndex + 1}`}
+              fill
+              className="object-cover"
+              priority
+            />
 
           {/* Photo Navigation */}
-          {profile.fotos.length > 1 && (
+            {fotos.length > 1 && (
             <>
               {/* Previous Button */}
               {currentPhotoIndex > 0 && (
@@ -89,7 +95,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
               )}
 
               {/* Next Button */}
-              {currentPhotoIndex < profile.fotos.length - 1 && (
+                {currentPhotoIndex < fotos.length - 1 && (
                 <Button
                   variant="secondary"
                   size="icon"
@@ -103,7 +109,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
 
               {/* Photo Indicator Dots */}
               <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
-                {profile.fotos.map((_, index) => (
+                  {fotos.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentPhotoIndex(index)}
@@ -130,7 +136,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
 
             <div className="mb-6 flex items-center gap-2 text-muted-foreground">
               <Briefcase className="h-5 w-5" />
-              <span className="text-lg">{profile.atributosFisicos.carrera}</span>
+                <span className="text-lg">{atributos.carrera}</span>
             </div>
 
             <div className="mb-6">
@@ -151,7 +157,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
             <div className="mb-6">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Intereses</h3>
               <div className="flex flex-wrap gap-2">
-                {profile.intereses.map((interes) => (
+                  {intereses.map((interes) => (
                   <Badge key={interes} variant="secondary" className="px-3 py-1 text-sm">
                     {interes}
                   </Badge>
@@ -166,11 +172,11 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
               <div className="flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">Ojos:</span>
-                  <span className="text-muted-foreground">{profile.atributosFisicos.colorOjos}</span>
+                    <span className="text-muted-foreground">{atributos.colorOjos}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">Cabello:</span>
-                  <span className="text-muted-foreground">{profile.atributosFisicos.colorCabello}</span>
+                    <span className="text-muted-foreground">{atributos.colorCabello}</span>
                 </div>
               </div>
             </div>
