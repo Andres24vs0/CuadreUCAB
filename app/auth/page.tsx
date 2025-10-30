@@ -17,28 +17,40 @@ export default function AuthPage() {
   const [error, setError] = useState("")
   const router = useRouter()
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
-    // Test user credentials
-    const testEmail = "maria.gonzalez@ucab.edu.ve"
-    const testPassword = "CuadreUCAB2025"
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
 
-    if (email !== testEmail) {
-      setError("No hay cuenta vinculada a este correo")
-      return
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.message ?? `Error ${res.status}`)
+        return
+      }
+
+      const publicUser = await res.json()
+
+      try {
+        localStorage.setItem("isAuthenticated", "true")
+        localStorage.setItem("userEmail", publicUser.email)
+        localStorage.setItem("userData", JSON.stringify(publicUser))
+      } catch (err) {
+        console.error("Error guardando en localStorage:", err)
+        setError("No se pudo guardar la sesión en el navegador")
+        return
+      }
+
+      router.push("/descubrir")
+    } catch (err) {
+      console.error("Error de red:", err)
+      setError("Error de red al iniciar sesión")
     }
-
-    if (password !== testPassword) {
-      setError("La contraseña colocada no es la correcta")
-      return
-    }
-
-    // Successful login
-    localStorage.setItem("isAuthenticated", "true")
-    localStorage.setItem("userEmail", email)
-    router.push("/descubrir")
   }
 
   const handleRegisterComplete = () => {
