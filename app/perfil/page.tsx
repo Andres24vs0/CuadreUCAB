@@ -68,6 +68,7 @@ export default function PerfilPage() {
   const [userData, setUserData] = useState<any>(null)
   const [editData, setEditData] = useState<any>(null)
   const [error, setError] = useState("")
+  const [pendingUploads, setPendingUploads] = useState<{ file: File; dataUrl: string; previewUrl: string }[]>([])
 
   const emptyProfile = {
     fotos: [] as string[],
@@ -82,6 +83,104 @@ export default function PerfilPage() {
     colorCabello: "",
   }
 
+  // Normalization helper: convert server/raw shapes into the UI-friendly flat shape used by this page
+  const normalizeRaw = (raw: any) => {
+    const src = raw?.perfil ?? raw
+
+    const parseDate = (v: any): Date | undefined => {
+      if (!v) return undefined
+      if (v instanceof Date) return v
+      if (typeof v === "string") {
+        const d = new Date(v)
+        return isNaN(d.getTime()) ? undefined : d
+      }
+      if (typeof v === "object") {
+        if ("$date" in v) {
+          const d = v.$date
+          if (typeof d === "string") {
+            const dd = new Date(d)
+            return isNaN(dd.getTime()) ? undefined : dd
+          }
+          if (typeof d === "object" && ("$numberLong" in d || "$numberLong" in v)) {
+            const num = Number(d.$numberLong ?? v.$numberLong)
+            const dd = new Date(num)
+            return isNaN(dd.getTime()) ? undefined : dd
+          }
+        }
+        if (v.$date && typeof v.$date === "object" && "$numberLong" in v.$date) {
+          const num = Number(v.$date.$numberLong)
+          const dd = new Date(num)
+          return isNaN(dd.getTime()) ? undefined : dd
+        }
+      }
+      return undefined
+    }
+
+    const parseNumber = (v: any): number | undefined => {
+      if (v == null) return undefined
+      if (typeof v === "number") return v
+      if (typeof v === "string" && !isNaN(Number(v))) return Number(v)
+      if (typeof v === "object") {
+        if ("$numberInt" in v) return Number(v.$numberInt)
+        if ("$numberLong" in v) return Number(v.$numberLong)
+      }
+      return undefined
+    }
+
+    const fechaN = parseDate(src?.fechaNacimiento ?? src?.perfil?.fechaNacimiento ?? src?.fecha_nacimiento)
+    const edad = fechaN ? calculateAge(fechaN) : (src?.edad ?? undefined)
+
+    const atributos = src?.atributosFisicos ?? src ?? {}
+    const preferencias = src?.preferencias ?? src ?? {}
+
+    const generoBuscado = Array.isArray(preferencias?.generoBuscado)
+      ? preferencias.generoBuscado
+      : Array.isArray(src?.generoBuscado)
+        ? src.generoBuscado
+        : []
+
+    const rango = preferencias?.rangoEdad ?? src?.rangoEdad ?? {}
+    const edadMin = parseNumber(rango?.min ?? rango?.min?.$numberInt ?? preferencias?.edadMinima) ?? undefined
+    const edadMax = parseNumber(rango?.max ?? rango?.max?.$numberInt ?? preferencias?.edadMaxima) ?? undefined
+
+    const normalized = {
+      // keep server id if present
+      id: raw?.id ?? raw?._id ?? undefined,
+      ...emptyProfile,
+      ...src,
+      email: raw?.email ?? src?.email ?? "",
+      fotos: Array.isArray(src?.fotos) ? src.fotos : [],
+      intereses: Array.isArray(src?.intereses) ? src.intereses : [],
+      colorOjos: atributos?.colorOjos ?? atributos?.color_ojos ?? "",
+      colorCabello: atributos?.colorCabello ?? atributos?.color_cabello ?? "",
+      preferencias: {
+        generoBuscado: Array.isArray(preferencias?.generoBuscado)
+          ? preferencias.generoBuscado.join(", ")
+          : typeof preferencias?.generoBuscado === "string"
+            ? preferencias.generoBuscado
+            : typeof src?.generoBuscado === "string"
+              ? src.generoBuscado
+              : Array.isArray(src?.generoBuscado)
+                ? src.generoBuscado.join(", ")
+                : "",
+        rangoEdad: { min: edadMin, max: edadMax },
+        preferenciaCarrera: preferencias?.preferenciaCarrera ?? preferencias?.carreraPref ?? "",
+      },
+      generoPreferido:
+        typeof preferencias?.generoBuscado === "string"
+          ? preferencias.generoBuscado
+          : Array.isArray(preferencias?.generoBuscado)
+            ? preferencias.generoBuscado.join(", ")
+            : "",
+      edadMinima: edadMin,
+      edadMaxima: edadMax,
+      carreraPreferida: preferencias?.preferenciaCarrera ?? "",
+      fechaNacimientoISO: fechaN ? fechaN.toISOString() : undefined,
+      edad: edad,
+    }
+    return normalized
+  }
+
   useEffect(() => {
     const userEmail = localStorage.getItem("userEmail")
     if (!userEmail) {
@@ -93,101 +192,7 @@ export default function PerfilPage() {
     if (storedData) {
       try {
         const raw = JSON.parse(storedData)
-        const src = raw?.perfil ?? raw
-
-        const parseDate = (v: any): Date | undefined => {
-          if (!v) return undefined
-          if (v instanceof Date) return v
-          if (typeof v === "string") {
-            const d = new Date(v)
-            return isNaN(d.getTime()) ? undefined : d
-          }
-          if (typeof v === "object") {
-            // Mongo extended JSON formats
-            if ("$date" in v) {
-              const d = v.$date
-              if (typeof d === "string") {
-                const dd = new Date(d)
-                return isNaN(dd.getTime()) ? undefined : dd
-              }
-              if (typeof d === "object" && ("$numberLong" in d || "$numberLong" in v)) {
-                const num = Number(d.$numberLong ?? v.$numberLong)
-                const dd = new Date(num)
-                return isNaN(dd.getTime()) ? undefined : dd
-              }
-            }
-            // older shape: { $date: { $numberLong: '...' } }
-            if (v.$date && typeof v.$date === "object" && "$numberLong" in v.$date) {
-              const num = Number(v.$date.$numberLong)
-              const dd = new Date(num)
-              return isNaN(dd.getTime()) ? undefined : dd
-            }
-          }
-          return undefined
-        }
-
-        const parseNumber = (v: any): number | undefined => {
-          if (v == null) return undefined
-          if (typeof v === "number") return v
-          if (typeof v === "string" && !isNaN(Number(v))) return Number(v)
-          if (typeof v === "object") {
-            if ("$numberInt" in v) return Number(v.$numberInt)
-            if ("$numberLong" in v) return Number(v.$numberLong)
-          }
-          return undefined
-        }
-
-        const fechaN = parseDate(src?.fechaNacimiento ?? src?.perfil?.fechaNacimiento ?? src?.fecha_nacimiento)
-        const edad = fechaN ? calculateAge(fechaN) : (src?.edad ?? undefined)
-
-        const atributos = src?.atributosFisicos ?? src ?? {}
-        const preferencias = src?.preferencias ?? src ?? {}
-
-        const generoBuscado = Array.isArray(preferencias?.generoBuscado)
-          ? preferencias.generoBuscado
-          : Array.isArray(src?.generoBuscado)
-            ? src.generoBuscado
-            : []
-
-        const rango = preferencias?.rangoEdad ?? src?.rangoEdad ?? {}
-        const edadMin = parseNumber(rango?.min ?? rango?.min?.$numberInt ?? preferencias?.edadMinima) ?? undefined
-        const edadMax = parseNumber(rango?.max ?? rango?.max?.$numberInt ?? preferencias?.edadMaxima) ?? undefined
-
-        const normalized = {
-          ...emptyProfile,
-          ...src,
-          // prefer email from root raw if perfil doesn't include it
-          email: raw?.email ?? src?.email ?? "",
-          fotos: Array.isArray(src?.fotos) ? src.fotos : [],
-          intereses: Array.isArray(src?.intereses) ? src.intereses : [],
-          colorOjos: atributos?.colorOjos ?? atributos?.color_ojos ?? "",
-          colorCabello: atributos?.colorCabello ?? atributos?.color_cabello ?? "",
-          preferencias: {
-            // generoBuscado ahora puede ser string o array; normalizamos a string
-            generoBuscado: Array.isArray(preferencias?.generoBuscado)
-              ? preferencias.generoBuscado.join(", ")
-              : typeof preferencias?.generoBuscado === "string"
-                ? preferencias.generoBuscado
-                : typeof src?.generoBuscado === "string"
-                  ? src.generoBuscado
-                  : Array.isArray(src?.generoBuscado)
-                    ? src.generoBuscado.join(", ")
-                    : "",
-            rangoEdad: { min: edadMin, max: edadMax },
-            preferenciaCarrera: preferencias?.preferenciaCarrera ?? preferencias?.carreraPref ?? "",
-          },
-          generoPreferido:
-            typeof preferencias?.generoBuscado === "string"
-              ? preferencias.generoBuscado
-              : Array.isArray(preferencias?.generoBuscado)
-                ? preferencias.generoBuscado.join(", ")
-                : "",
-          edadMinima: edadMin,
-          edadMaxima: edadMax,
-          carreraPreferida: preferencias?.preferenciaCarrera ?? "",
-          fechaNacimientoISO: fechaN ? fechaN.toISOString() : undefined,
-          edad: edad,
-        }
+        const normalized = normalizeRaw(raw)
         setUserData(normalized)
         setEditData(normalized)
       } catch (e) {
@@ -201,14 +206,26 @@ export default function PerfilPage() {
     }
   }, [router])
 
+  async function uploadDataUrl(dataUrl: string, filename?: string) {
+    const res = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, data: dataUrl }),
+    })
+    if (!res.ok) throw new Error('Upload failed')
+    const body = await res.json()
+    return body.url as string
+  }
+
   const handleLogout = () => {
     localStorage.clear()
     router.push("/auth")
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setError("")
 
+    // Basic client-side validation
     if (editData.password && editData.password !== editData.confirmPassword) {
       setError("Las contraseñas no coinciden")
       return
@@ -234,10 +251,78 @@ export default function PerfilPage() {
       return
     }
 
-    localStorage.setItem("userData", JSON.stringify(editData))
-    setUserData(editData)
-    setIsEditing(false)
-    setError("")
+    // Determine identifier (prefer id, fallback to email)
+    const identifier = editData?.id ?? editData?._id ?? editData?.email ?? userData?.email
+    if (!identifier) {
+      setError('No se pudo determinar el identificador del usuario')
+      return
+    }
+
+    // Build payload matching the PATCH schema in the API
+    const payload: any = {
+      nombre: editData.nombre,
+      genero: editData.genero,
+      bio: editData.bio,
+      fotos: editData.fotos,
+      intereses: editData.intereses,
+      atributosFisicos: {
+        colorOjos: editData.colorOjos,
+        colorCabello: editData.colorCabello,
+      },
+      carrera: editData.carrera,
+      preferencias: {
+        generoBuscado: editData.generoPreferido,
+        rangoEdad: { min: editData.edadMinima, max: editData.edadMaxima },
+        preferenciaCarrera: editData.carreraPreferida,
+      },
+    }
+
+    // include password if user wants to change it
+    if (editData.password && editData.password.length >= 8) {
+      payload.password = editData.password
+    }
+
+    if (editData.fechaNacimientoISO) payload.fechaNacimiento = editData.fechaNacimientoISO
+
+    try {
+      // If there are pending file uploads, upload them first and replace previews in payload.fotos
+      if (pendingUploads.length > 0) {
+        const uploaded = await Promise.all(pendingUploads.map((p) => uploadDataUrl(p.dataUrl, p.file.name)))
+        // uploaded are URLs corresponding to pendingUploads in order
+        // Replace any previewUrl occurrences in payload.fotos with the uploaded URLs
+        payload.fotos = (payload.fotos || []).map((f: string) => {
+          const idx = pendingUploads.findIndex((p) => p.previewUrl === f)
+          return idx >= 0 ? uploaded[idx] : f
+        })
+      }
+
+      const res = await fetch(`/api/usuarios/${encodeURIComponent(String(identifier))}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error || 'Error actualizando el perfil')
+        return
+      }
+
+  const updatedRaw = await res.json()
+
+  // Normalize server response into the UI shape and persist
+  const updated = normalizeRaw(updatedRaw)
+  localStorage.setItem('userData', JSON.stringify(updatedRaw))
+  setUserData(updated)
+  setEditData(updated)
+  // clear pending uploads queue
+  setPendingUploads([])
+      setIsEditing(false)
+      setError('')
+    } catch (e: any) {
+      console.error('Error updating profile', e)
+      setError('Error de red al actualizar el perfil')
+    }
   }
 
   const handleCancel = () => {
@@ -307,6 +392,14 @@ export default function PerfilPage() {
                 <ImageUpload
                   photos={editData?.fotos ?? []}
                   onPhotosChange={(photos) => updateEditData("fotos", photos)}
+                  onFilesSelected={(files) => {
+                    // merge into pendingUploads, avoid duplicates by previewUrl
+                    setPendingUploads((prev) => {
+                      const map = new Map(prev.map((p) => [p.previewUrl, p]))
+                      for (const f of files) map.set(f.previewUrl, f)
+                      return Array.from(map.values())
+                    })
+                  }}
                 />
               ) : (
                 <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100">
@@ -512,17 +605,17 @@ export default function PerfilPage() {
                     selectedInterests={editData.intereses}
                     onInterestsChange={(interests) => updateEditData("intereses", interests)}
                   />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {userData.intereses.map((interest: string) => (
-                      <span
-                        key={interest}
-                        className="rounded-full bg-ucab-maroon/10 px-3 py-1 text-sm text-ucab-maroon"
-                      >
-                        {interest}
-                      </span>
-                    ))}
-                  </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {(Array.isArray(userData.intereses) ? userData.intereses : []).map((interest: string) => (
+                        <span
+                          key={interest}
+                          className="rounded-full bg-ucab-maroon/10 px-3 py-1 text-sm text-ucab-maroon"
+                        >
+                          {interest}
+                        </span>
+                      ))}
+                    </div>
                 )}
               </div>
 

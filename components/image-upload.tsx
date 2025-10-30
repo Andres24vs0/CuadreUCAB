@@ -9,9 +9,11 @@ import Image from "next/image"
 interface ImageUploadProps {
   photos: string[]
   onPhotosChange: (photos: string[]) => void
+  // optional: callback with actual File objects and data URLs for upload
+  onFilesSelected?: (files: { file: File; dataUrl: string; previewUrl: string }[]) => void
 }
 
-export function ImageUpload({ photos, onPhotosChange }: ImageUploadProps) {
+export function ImageUpload({ photos, onPhotosChange, onFilesSelected }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -21,6 +23,17 @@ export function ImageUpload({ photos, onPhotosChange }: ImageUploadProps) {
     const newPhotos = Array.from(files).slice(0, 2 - photos.length)
     const photoUrls = newPhotos.map((file) => URL.createObjectURL(file))
     onPhotosChange([...photos, ...photoUrls])
+
+    if (onFilesSelected) {
+      const readers = newPhotos.map((file, idx) =>
+        new Promise<{ file: File; dataUrl: string; previewUrl: string }>((res) => {
+          const r = new FileReader()
+          r.onload = () => res({ file, dataUrl: String(r.result), previewUrl: photoUrls[idx] })
+          r.readAsDataURL(file)
+        })
+      )
+      Promise.all(readers).then((res) => onFilesSelected?.(res))
+    }
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -33,6 +46,17 @@ export function ImageUpload({ photos, onPhotosChange }: ImageUploadProps) {
     const newPhotos = Array.from(files).slice(0, 2 - photos.length)
     const photoUrls = newPhotos.map((file) => URL.createObjectURL(file))
     onPhotosChange([...photos, ...photoUrls])
+
+    if (onFilesSelected) {
+      const readers = newPhotos.map((file, idx) =>
+        new Promise<{ file: File; dataUrl: string; previewUrl: string }>((res) => {
+          const r = new FileReader()
+          r.onload = () => res({ file, dataUrl: String(r.result), previewUrl: photoUrls[idx] })
+          r.readAsDataURL(file)
+        })
+      )
+      Promise.all(readers).then((res) => onFilesSelected?.(res))
+    }
   }
 
   const removePhoto = (index: number) => {

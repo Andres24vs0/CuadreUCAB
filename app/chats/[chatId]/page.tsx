@@ -56,7 +56,8 @@ export default function ChatPage() {
         id: `msg-${Date.now()}`,
         senderId: CURRENT_USER_ID,
         text: message.trim(),
-        timestamp: new Date(),
+  timestamp: new Date(),
+  read: true,
       }
       setMessages([...messages, newMessage])
       setMessage("")
