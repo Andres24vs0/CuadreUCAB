@@ -83,6 +83,32 @@ export async function getProfileById(id: string): Promise<PublicProfile | null> 
 }
 
 /**
+ * Registra un nuevo usuario en la colección `usuarios`.
+ * - `user` debe contener email, password y opcional perfil completo.
+ * - Retorna el id string del nuevo usuario.
+ */
+export async function registerUser(user: { email: string; password: string; perfil?: Partial<DbUsuario['perfil']> }) {
+  const db = await getDb()
+  // simple uniqueness check by email
+  const exists = await db.collection('usuarios').findOne({ email: user.email })
+  if (exists) {
+    throw new Error('EMAIL_EXISTS')
+  }
+
+  const now = new Date()
+  const doc: any = {
+    email: user.email,
+    password: user.password,
+    creadoEn: now,
+    perfil: user.perfil ?? {},
+    ultimaConexion: now,
+  }
+
+  const res = await db.collection('usuarios').insertOne(doc)
+  return res.insertedId.toString()
+}
+
+/**
  * Actualiza parcialmente el perfil de un usuario.
  * - `id` puede ser ObjectId string o email.
  * - `updates` es un objeto parcial con la forma de `perfil` (por ejemplo: { nombre, bio, fotos, intereses, atributosFisicos, preferencias, fechaNacimiento })

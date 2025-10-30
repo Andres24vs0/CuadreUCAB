@@ -82,9 +82,21 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
   })
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [photos, setPhotos] = useState<string[]>([])
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; dataUrl: string; previewUrl: string }[]>([])
   const [error, setError] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const uploadDataUrl = async (dataUrl: string, filename?: string) => {
+    const res = await fetch('/api/uploads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, data: dataUrl }),
+    })
+    if (!res.ok) throw new Error('Upload failed')
+    const body = await res.json()
+    return body.url as string
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
@@ -144,16 +156,54 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
       return
     }
 
-    // Save user data (in a real app, this would be sent to a backend)
-    const userData = {
-      ...formData,
-      intereses: selectedInterests,
-      fotos: photos,
-    }
-    localStorage.setItem("userData", JSON.stringify(userData))
-    localStorage.setItem("userEmail", formData.email)
+    try {
+      // upload pending files (if any) and replace previews
+      let uploadedUrls = photos
+      if (pendingFiles.length > 0) {
+        const urls = await Promise.all(pendingFiles.map((p) => uploadDataUrl(p.dataUrl, p.file.name)))
+        // map previews to urls
+        uploadedUrls = photos.map((p) => {
+          const idx = pendingFiles.findIndex((f) => f.previewUrl === p)
+          return idx >= 0 ? urls[idx] : p
+        })
+      }
 
-    onComplete()
+      const perfil = {
+        nombre: formData.nombre,
+        fotos: uploadedUrls,
+        intereses: selectedInterests,
+        fechaNacimiento: formData.fechaNacimiento,
+        genero: formData.genero,
+        bio: formData.bio,
+        atributosFisicos: { colorOjos: formData.colorOjos, colorCabello: formData.colorCabello },
+        carrera: formData.carrera,
+        preferencias: {
+          generoBuscado: formData.generoPreferido,
+          rangoEdad: { min: formData.edadMinima, max: formData.edadMaxima },
+          preferenciaCarrera: formData.carreraPreferida,
+        },
+      }
+
+      const res = await fetch('/api/usuarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password, perfil }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error || 'Error registrando usuario')
+        return
+      }
+      const body = await res.json()
+      // store returned id and profile
+      localStorage.setItem('userData', JSON.stringify(body.profile ?? { email: formData.email, perfil }))
+      localStorage.setItem('userEmail', formData.email)
+      localStorage.setItem('userId', body.id)
+      onComplete()
+    } catch (err: any) {
+      console.error('Registro error', err)
+      setError('Error registrando usuario')
+    }
   }
 
   const updateFormData = (field: string, value: string) => {
@@ -325,7 +375,11 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
 
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-ucab-maroon">Fotos (exactamente 2) *</h2>
-        <ImageUpload photos={photos} onPhotosChange={setPhotos} />
+        <ImageUpload
+          photos={photos}
+          onPhotosChange={setPhotos}
+          onFilesSelected={(files) => setPendingFiles(files)}
+        />
       </div>
 
       <div className="space-y-4">
