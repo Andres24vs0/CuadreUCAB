@@ -1,22 +1,24 @@
 "use client"
 
+
+import { useRouter } from 'next/navigation'
+import { useAuthStore } from "@/lib/stores/auth-store"
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 
 export default function HomePage() {
   const router = useRouter()
+  const { userId, userEmail, hasHydrated } = useAuthStore()
 
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem("isAuthenticated")
+    // Wait for the store to hydrate from localStorage before redirecting
+    if (!hasHydrated) return
 
-    console.log("[v0] Auth check:", isAuthenticated)
-
-    if (isAuthenticated === "true") {
-      router.push("/descubrir")
+    if (userId || userEmail) {
+      router.replace('/descubrir')
     } else {
-      router.push("/auth")
+      router.replace('/auth')
     }
-  }, [router])
+  }, [userId, userEmail, hasHydrated, router])
 
   return null
 }

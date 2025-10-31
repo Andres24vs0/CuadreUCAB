@@ -1,8 +1,8 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,158 +10,72 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { InterestsSelector } from "@/components/interests-selector"
 import { ImageUpload } from "@/components/image-upload"
-import { isAtLeast18YearsOld } from "@/lib/zodiac-utils"
-
-const carreras = [
-  "Industrial",
-  "Informática",
-  "Arquitectura",
-  "Civil",
-  "Telecomunicaciones",
-  "Mecatrónica",
-  "Tsu Diseño Y Producción De Software",
-  "Filosofía",
-  "Psicología",
-  "Letras",
-  "Comunicación Social",
-  "Educación",
-  "Administración",
-  "Contaduría",
-  "Relaciones Industriales",
-  "Sociología",
-  "Economía",
-  "Tsu En Seguridad Y Salud Laboral",
-  "Tsu En Seguros",
-  "Derecho",
-  "Teología",
-]
-
-const coloresOjos = ["Marrón", "Verde", "Azul", "Gris", "Avellana", "Negro", "Ámbar"]
-
-const coloresCabello = [
-  "Negro",
-  "Castaño Oscuro",
-  "Castaño",
-  "Castaño Claro",
-  "Rubio",
-  "Rubio Platino",
-  "Pelirrojo",
-  "Gris",
-  "Blanco",
-  "Azul",
-  "Rojo",
-  "Rosa",
-  "Morado",
-  "Verde",
-  "Turquesa",
-  "Naranja",
-]
-
-const generos = ["Masculino", "Femenino", "Otro"]
+import { CARRERAS, COLORES_OJOS, COLORES_CABELLO, GENEROS } from "@/lib/constants"
+import { useRegister } from "@/lib/queries/auth-queries"
+import { useUploadImage } from "@/lib/queries/upload-queries"
+import { registerFormSchema, type RegisterFormData, type PendingUpload } from "@/lib/types"
 
 interface RegisterFormProps {
-  onComplete: () => void
+  onComplete: (userId: string, email: string) => void
 }
 
 export function RegisterForm({ onComplete }: RegisterFormProps) {
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-    nombre: "",
-    fechaNacimiento: "",
-    genero: "",
-    bio: "",
-    carrera: "",
-    colorOjos: "",
-    colorCabello: "",
-    generoPreferido: "",
-    edadMinima: "",
-    edadMaxima: "",
-    carreraPreferida: "",
-  })
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [photos, setPhotos] = useState<string[]>([])
-  const [pendingFiles, setPendingFiles] = useState<{ file: File; dataUrl: string; previewUrl: string }[]>([])
-  const [error, setError] = useState("")
+  const [pendingFiles, setPendingFiles] = useState<PendingUpload[]>([])
+  const [submitError, setSubmitError] = useState("")
 
-  const uploadDataUrl = async (dataUrl: string, filename?: string) => {
-    const res = await fetch('/api/uploads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, data: dataUrl }),
-    })
-    if (!res.ok) throw new Error('Upload failed')
-    const body = await res.json()
-    return body.url as string
-  }
+  // Use TanStack Query hooks
+  const registerMutation = useRegister()
+  const uploadImageMutation = useUploadImage()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerFormSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      confirmPassword: "",
+      nombre: "",
+      fechaNacimiento: "",
+      genero: undefined,
+      bio: "",
+      carrera: undefined,
+      colorOjos: "",
+      colorCabello: "",
+      generoPreferido: "",
+      edadMinima: "",
+      edadMaxima: "",
+      carreraPreferida: undefined,
+    },
+  })
 
-    if (!formData.email.endsWith("@ucab.edu.ve") && !formData.email.endsWith("@est.ucab.edu.ve")) {
-      setError("Debes usar un correo UCAB (@ucab.edu.ve o @est.ucab.edu.ve)")
-      return
-    }
+  const onSubmit = async (data: RegisterFormData) => {
+    setSubmitError("")
 
-    if (formData.password !== formData.confirmPassword) {
-      setError("Las contraseñas no coinciden")
-      return
-    }
-
-    if (formData.password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres")
-      return
-    }
-
-    if (!formData.fechaNacimiento) {
-      setError("Debes ingresar tu fecha de nacimiento")
-      return
-    }
-
-    const birthDate = new Date(formData.fechaNacimiento)
-    if (!isAtLeast18YearsOld(birthDate)) {
-      setError("Debes tener al menos 18 años para registrarte")
-      return
-    }
-
+    // Validate additional fields (interests and photos)
     if (selectedInterests.length === 0) {
-      setError("Debes seleccionar al menos un interés")
+      setSubmitError("Debes seleccionar al menos un interés")
       return
     }
 
     if (photos.length !== 2) {
-      setError("Debes subir exactamente 2 fotos")
-      return
-    }
-
-    if (!formData.generoPreferido) {
-      setError("Debes seleccionar un género buscado")
-      return
-    }
-
-    if (!formData.edadMinima || !formData.edadMaxima) {
-      setError("Debes especificar el rango de edad buscado")
-      return
-    }
-
-    if (Number.parseInt(formData.edadMinima) > Number.parseInt(formData.edadMaxima)) {
-      setError("La edad mínima no puede ser mayor que la edad máxima")
-      return
-    }
-
-    if (!formData.carreraPreferida) {
-      setError("Debes seleccionar una preferencia de carrera")
+      setSubmitError("Debes tener exactamente 2 fotos")
       return
     }
 
     try {
-      // upload pending files (if any) and replace previews
+      // Upload pending files (if any) and replace previews
       let uploadedUrls = photos
       if (pendingFiles.length > 0) {
-        const urls = await Promise.all(pendingFiles.map((p) => uploadDataUrl(p.dataUrl, p.file.name)))
-        // map previews to urls
+        const urls = await Promise.all(
+          pendingFiles.map((p) => uploadImageMutation.mutateAsync({ dataUrl: p.dataUrl, filename: p.file.name }))
+        )
+        // Map previews to URLs
         uploadedUrls = photos.map((p) => {
           const idx = pendingFiles.findIndex((f) => f.previewUrl === p)
           return idx >= 0 ? urls[idx] : p
@@ -169,49 +83,42 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
       }
 
       const perfil = {
-        nombre: formData.nombre,
+        nombre: data.nombre,
         fotos: uploadedUrls,
         intereses: selectedInterests,
-        fechaNacimiento: formData.fechaNacimiento,
-        genero: formData.genero,
-        bio: formData.bio,
-        atributosFisicos: { colorOjos: formData.colorOjos, colorCabello: formData.colorCabello },
-        carrera: formData.carrera,
+        fechaNacimiento: data.fechaNacimiento,
+        genero: data.genero,
+        bio: data.bio,
+        atributosFisicos: { colorOjos: data.colorOjos, colorCabello: data.colorCabello },
+        carrera: data.carrera,
         preferencias: {
-          generoBuscado: formData.generoPreferido,
-          rangoEdad: { min: formData.edadMinima, max: formData.edadMaxima },
-          preferenciaCarrera: formData.carreraPreferida,
+          generoBuscado: data.generoPreferido,
+          rangoEdad: { 
+            min: Number.parseInt(data.edadMinima), 
+            max: Number.parseInt(data.edadMaxima) 
+          },
+          preferenciaCarrera: data.carreraPreferida,
         },
       }
 
-      const res = await fetch('/api/usuarios', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, password: formData.password, perfil }),
+      // Register user using mutation
+      const response = await registerMutation.mutateAsync({
+        email: data.email,
+        password: data.password,
+        perfil,
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setError(body?.error || 'Error registrando usuario')
-        return
-      }
-      const body = await res.json()
-      // store returned id and profile
-      localStorage.setItem('userData', JSON.stringify(body.profile ?? { email: formData.email, perfil }))
-      localStorage.setItem('userEmail', formData.email)
-      localStorage.setItem('userId', body.id)
-      onComplete()
+
+      // The mutation's onSuccess callback handles auth store update
+      // We still need to call onComplete for navigation
+      onComplete(response.id, data.email)
     } catch (err: any) {
-      console.error('Registro error', err)
-      setError('Error registrando usuario')
+      console.error("Registro error", err)
+      setSubmitError(err?.error || err?.message || "Error registrando usuario")
     }
   }
 
-  const updateFormData = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-ucab-maroon">Información de Cuenta</h2>
 
@@ -222,10 +129,9 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               id="email"
               type="email"
               placeholder="tu.correo@ucab.edu.ve"
-              value={formData.email}
-              onChange={(e) => updateFormData("email", e.target.value)}
-              required
+              {...register("email")}
             />
+            {errors.email && <p className="text-sm text-red-600">{errors.email.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -234,10 +140,9 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               id="nombre"
               type="text"
               placeholder="Tu primer nombre"
-              value={formData.nombre}
-              onChange={(e) => updateFormData("nombre", e.target.value)}
-              required
+              {...register("nombre")}
             />
+            {errors.nombre && <p className="text-sm text-red-600">{errors.nombre.message}</p>}
           </div>
         </div>
 
@@ -248,10 +153,9 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               id="password"
               type="password"
               placeholder="Mínimo 8 caracteres"
-              value={formData.password}
-              onChange={(e) => updateFormData("password", e.target.value)}
-              required
+              {...register("password")}
             />
+            {errors.password && <p className="text-sm text-red-600">{errors.password.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -260,10 +164,9 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               id="confirmPassword"
               type="password"
               placeholder="Repite tu contraseña"
-              value={formData.confirmPassword}
-              onChange={(e) => updateFormData("confirmPassword", e.target.value)}
-              required
+              {...register("confirmPassword")}
             />
+            {errors.confirmPassword && <p className="text-sm text-red-600">{errors.confirmPassword.message}</p>}
           </div>
         </div>
       </div>
@@ -278,42 +181,55 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               id="fechaNacimiento"
               type="date"
               max={new Date().toISOString().split("T")[0]}
-              value={formData.fechaNacimiento}
-              onChange={(e) => updateFormData("fechaNacimiento", e.target.value)}
-              required
+              {...register("fechaNacimiento")}
             />
+            {errors.fechaNacimiento && <p className="text-sm text-red-600">{errors.fechaNacimiento.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="genero">Género *</Label>
-            <Select value={formData.genero} onValueChange={(value) => updateFormData("genero", value)} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                {generos.map((genero) => (
-                  <SelectItem key={genero} value={genero.toLowerCase()}>
-                    {genero}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="genero"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENEROS.map((genero) => (
+                      <SelectItem key={genero} value={genero.toLowerCase()}>
+                        {genero}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.genero && <p className="text-sm text-red-600">{errors.genero.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="carrera">Carrera *</Label>
-            <Select value={formData.carrera} onValueChange={(value) => updateFormData("carrera", value)} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                {carreras.map((carrera) => (
-                  <SelectItem key={carrera} value={carrera}>
-                    {carrera}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="carrera"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CARRERAS.map((carrera) => (
+                      <SelectItem key={carrera} value={carrera}>
+                        {carrera}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.carrera && <p className="text-sm text-red-600">{errors.carrera.message}</p>}
           </div>
         </div>
 
@@ -322,48 +238,57 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
           <Textarea
             id="bio"
             placeholder="Cuéntanos sobre ti..."
-            value={formData.bio}
-            onChange={(e) => updateFormData("bio", e.target.value)}
-            required
+              {...register("bio")}
             rows={3}
           />
+          {errors.bio && <p className="text-sm text-red-600">{errors.bio.message}</p>}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="colorOjos">Color de Ojos *</Label>
-            <Select value={formData.colorOjos} onValueChange={(value) => updateFormData("colorOjos", value)} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                {coloresOjos.map((color) => (
-                  <SelectItem key={color} value={color.toLowerCase()}>
-                    {color}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="colorOjos"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLORES_OJOS.map((color) => (
+                      <SelectItem key={color} value={color.toLowerCase()}>
+                        {color}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.colorOjos && <p className="text-sm text-red-600">{errors.colorOjos.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="colorCabello">Color de Cabello *</Label>
-            <Select
-              value={formData.colorCabello}
-              onValueChange={(value) => updateFormData("colorCabello", value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                {coloresCabello.map((color) => (
-                  <SelectItem key={color} value={color.toLowerCase()}>
-                    {color}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="colorCabello"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLORES_CABELLO.map((color) => (
+                      <SelectItem key={color} value={color.toLowerCase()}>
+                        {color}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.colorCabello && <p className="text-sm text-red-600">{errors.colorCabello.message}</p>}
           </div>
         </div>
       </div>
@@ -388,23 +313,26 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="generoPreferido">Género Buscado *</Label>
-            <Select
-              value={formData.generoPreferido}
-              onValueChange={(value) => updateFormData("generoPreferido", value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {generos.map((genero) => (
-                  <SelectItem key={genero} value={genero.toLowerCase()}>
-                    {genero}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="generoPreferido"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {GENEROS.map((genero) => (
+                      <SelectItem key={genero} value={genero.toLowerCase()}>
+                        {genero}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.generoPreferido && <p className="text-sm text-red-600">{errors.generoPreferido.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -415,10 +343,9 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               min="18"
               max="99"
               placeholder="18"
-              value={formData.edadMinima}
-              onChange={(e) => updateFormData("edadMinima", e.target.value)}
-              required
+              {...register("edadMinima")}
             />
+            {errors.edadMinima && <p className="text-sm text-red-600">{errors.edadMinima.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -429,40 +356,52 @@ export function RegisterForm({ onComplete }: RegisterFormProps) {
               min="18"
               max="99"
               placeholder="99"
-              value={formData.edadMaxima}
-              onChange={(e) => updateFormData("edadMaxima", e.target.value)}
-              required
+              {...register("edadMaxima")}
             />
+            {errors.edadMaxima && <p className="text-sm text-red-600">{errors.edadMaxima.message}</p>}
           </div>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="carreraPreferida">Preferencia de Carrera *</Label>
-          <Select
-            value={formData.carreraPreferida}
-            onValueChange={(value) => updateFormData("carreraPreferida", value)}
-            required
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecciona una opción" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas</SelectItem>
-              <SelectItem value="misma">Misma</SelectItem>
-              <SelectItem value="otra">Otra</SelectItem>
-            </SelectContent>
-          </Select>
+            <Controller
+              name="carreraPreferida"
+              control={control}
+              render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una opción" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  <SelectItem value="misma">Misma</SelectItem>
+                  <SelectItem value="otra">Otra</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.carreraPreferida && <p className="text-sm text-red-600">{errors.carreraPreferida.message}</p>}
         </div>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {(submitError || registerMutation.isError) && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
+          {submitError || (registerMutation.error as any)?.error || "Error registrando usuario"}
+        </div>
+      )}
+      {(isSubmitting || registerMutation.isPending) && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-600">
+          Registrando usuario...
+        </div>
+      )}
 
       <Button
         type="submit"
         className="w-full bg-ucab-maroon text-white text-lg font-semibold hover:bg-ucab-maroon/90"
         size="lg"
+        disabled={isSubmitting || registerMutation.isPending}
       >
-        Crear Cuenta
+        {isSubmitting || registerMutation.isPending ? "Creando cuenta..." : "Crear Cuenta"}
       </Button>
     </form>
   )

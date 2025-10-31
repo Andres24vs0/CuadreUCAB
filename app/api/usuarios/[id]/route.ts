@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { updateProfile } from '@/lib/db/ManejadorUsuarios'
+import { updateProfile, getProfileById } from '@/lib/db/ManejadorUsuarios'
 
 const perfilUpdateSchema = z.object({
   nombre: z.string().min(1).optional(),
@@ -14,6 +14,29 @@ const perfilUpdateSchema = z.object({
   preferencias: z.any().optional(),
   fechaNacimiento: z.union([z.string(), z.number()]).optional(),
 })
+
+/**
+ * GET /api/usuarios/[id]
+ * Get user by ID
+ * Returns: PublicProfile
+ * NOTE: This route does NOT implement auth. Ensure you check the authenticated user before calling this in production.
+ */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const resolvedParams = await params
+    const userId = typeof resolvedParams.id === 'string' ? decodeURIComponent(resolvedParams.id).trim() : resolvedParams.id
+    
+    const profile = await getProfileById(userId)
+    if (!profile) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    
+    return NextResponse.json(profile)
+  } catch (err: any) {
+    console.error('GET /api/usuarios/[id] error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 /**
  * PATCH /api/usuarios/[id]
