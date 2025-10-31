@@ -1,30 +1,41 @@
 # CuadreUCAB
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
-
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/andres24vs-gmailcoms-projects/v0-cuadre-ucab)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/ApUPMbUE1Aj)
 
-## Overview
+## Descripción
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+CuadreUCAB es una plataforma diseñada exclusivamente para la comunidad universitaria de la UCAB. 
 
-## Deployment
+Buscamos que CuadreUCAB sea el Tinder de la UCAB, evitando momentos incómodos y creando un ambiente más relajado donde los estudiantes puedan conocerse y formar conexiones de manera natural.
 
-Your project is live at:
+## Tecnologías
 
-**[https://vercel.com/andres24vs-gmailcoms-projects/v0-cuadre-ucab](https://vercel.com/andres24vs-gmailcoms-projects/v0-cuadre-ucab)**
+- **Next.js 15** - Framework React con App Router
+- **TypeScript** - Tipado estático
+- **React Query** - Gestión de estado del servidor
+- **Zustand** - Gestión de estado global
+- **MongoDB** - Base de datos
+- **Tailwind CSS** - Estilos
+- **Radix UI** - Componentes accesibles
 
-## Build your app
+## Inicio Rápido
 
-Continue building your app on:
+```bash
+# Instalar dependencias
+npm install
 
-**[https://v0.app/chat/projects/ApUPMbUE1Aj](https://v0.app/chat/projects/ApUPMbUE1Aj)**
+# Ejecutar en desarrollo
+npm run dev
 
-## How It Works
+# Compilar para producción
+npm run build
+```
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## Características
+
+- Sistema de autenticación
+- Perfiles personalizables
+- Galería de fotos
+- Sistema de matches y coincidencias
+- Chat en tiempo real
+- Preferencias de búsqueda avanzadas
