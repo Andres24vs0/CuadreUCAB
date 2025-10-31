@@ -66,7 +66,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
   }
 
   return (
-    <Card className={`relative mx-auto w-full max-w-5xl overflow-hidden shadow-2xl ${getSwipeClasses()}`}>
+    <Card className={`relative mx-auto w-full max-w-5xl overflow-hidden shadow-2xl ${getSwipeClasses()}`} style={{ contain: 'layout style paint' }}>
       <div className="grid grid-cols-1 lg:grid-cols-2">
         {/* Photo Section - Left Side */}
         <div className="relative aspect-[3/4] lg:aspect-auto lg:min-h-[600px]">

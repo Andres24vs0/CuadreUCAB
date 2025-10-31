@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { getUserProfile, updateUserProfile } from "@/lib/api"
+import { getUserProfile, updateUserProfile, getDiscoverableProfiles, createSwipe, type DiscoverProfile } from "@/lib/api"
 import type { NormalizedProfile, ProfileUpdate } from "@/lib/types"
 
 // Query keys
 export const userKeys = {
   all: ["users"] as const,
   profile: (id: string | null | undefined) => [...userKeys.all, "profile", id] as const,
+  discover: (userId: string | null | undefined) => [...userKeys.all, "discover", userId] as const,
 }
 
 /**
@@ -40,6 +41,45 @@ export function useUpdateUserProfile() {
     onSuccess: (data, variables) => {
       // Invalidate and refetch the profile query
       queryClient.invalidateQueries({ queryKey: userKeys.profile(variables.identifier) })
+    },
+  })
+}
+
+/**
+ * Query hook to fetch discoverable profiles
+ */
+export function useDiscoverableProfiles(userId: string | null | undefined, limit?: number) {
+  return useQuery({
+    queryKey: userKeys.discover(userId),
+    queryFn: () => {
+      if (!userId) throw new Error("User ID is required")
+      return getDiscoverableProfiles(userId, limit)
+    },
+    enabled: !!userId,
+    staleTime: 30 * 1000, // 30 seconds - refresh frequently for new profiles
+    refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * Mutation hook to create a swipe (like or pass)
+ */
+export function useCreateSwipe() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      idEmisor,
+      idReceptor,
+      accion,
+    }: {
+      idEmisor: string
+      idReceptor: string
+      accion: "like" | "pass"
+    }) => createSwipe(idEmisor, idReceptor, accion),
+    onSuccess: (data, variables) => {
+      // Invalidate discover profiles to refresh the list
+      queryClient.invalidateQueries({ queryKey: userKeys.discover(variables.idEmisor) })
     },
   })
 }

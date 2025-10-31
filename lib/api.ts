@@ -98,3 +98,48 @@ export async function uploadImage(dataUrl: string, filename?: string): Promise<s
   return response.url
 }
 
+// Profile type for discover/swipe
+export interface DiscoverProfile {
+  id: string
+  nombre: string
+  fechaNacimiento: string
+  genero: string
+  bio: string
+  fotos: string[]
+  intereses: string[]
+  atributosFisicos: {
+    colorOjos: string
+    colorCabello: string
+    carrera: string
+  }
+  hasLikedYou?: boolean
+}
+
+/**
+ * Get discoverable profiles
+ */
+export async function getDiscoverableProfiles(
+  userId: string,
+  limit?: number
+): Promise<DiscoverProfile[]> {
+  const params = new URLSearchParams({ userId })
+  if (limit) params.append('limit', limit.toString())
+  
+  return apiFetch<DiscoverProfile[]>(`/api/discover?${params.toString()}`)
+}
+
+/**
+ * Create a swipe (like or pass)
+ */
+export async function createSwipe(
+  idEmisor: string,
+  idReceptor: string,
+  accion: "like" | "pass"
+): Promise<{ isMatch: boolean }> {
+  return apiFetch<{ isMatch: boolean }>("/api/swipes", {
+    method: "POST",
+    body: JSON.stringify({ idEmisor, idReceptor, accion }),
+  })
+}
+
+
