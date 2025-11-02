@@ -168,7 +168,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
             <div className="mb-6">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Genero</h3>
               <div className="flex flex-wrap gap-2">
-                {profile.genero.capitalize()}
+                {profile.genero ? profile.genero.charAt(0).toUpperCase() + profile.genero.slice(1) : ''}
               </div>
             </div>
 
