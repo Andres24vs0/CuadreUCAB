@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/queries/auth-queries"
 
@@ -28,10 +29,15 @@ export default function DashboardLayout({
     )
   }
 
-  // Check authentication and redirect if not authenticated
-  // This runs during render, avoiding useEffect
+  // Redirect to login when not authenticated. Do NOT call router.replace during render.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace("/auth/login")
+    }
+  }, [isAuthenticated, router])
+
+  // While redirecting (not authenticated) don't render children
   if (!isAuthenticated) {
-    router.replace("/auth/login")
     return null
   }
 
