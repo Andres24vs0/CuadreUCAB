@@ -21,6 +21,15 @@ export default function DashboardLayout({
   // Track user activity for last connection throughout the dashboard
   useUserActivity()
 
+  // Redirect to login when not authenticated. Do NOT call router.replace during render.
+  // Keep this hook call unconditional to preserve hook order; only perform the redirect
+  // after the store has hydrated so we don't navigate prematurely.
+  useEffect(() => {
+    if (hasHydrated && !isAuthenticated) {
+      router.replace("/auth/login")
+    }
+  }, [hasHydrated, isAuthenticated, router])
+
   // Wait for store to hydrate from localStorage
   if (!hasHydrated) {
     return (
@@ -32,13 +41,6 @@ export default function DashboardLayout({
       </div>
     )
   }
-
-  // Redirect to login when not authenticated. Do NOT call router.replace during render.
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.replace("/auth/login")
-    }
-  }, [isAuthenticated, router])
 
   // While redirecting (not authenticated) don't render children
   if (!isAuthenticated) {
