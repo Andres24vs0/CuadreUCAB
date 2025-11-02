@@ -100,6 +100,15 @@ export async function getUserChats(userId: string): Promise<ChatWithProfile[]> {
         { sort: { creadoEn: -1 } }
       )
 
+    // Calculate unread count: count messages from OTHER user that are unread
+    const unreadCount = await db
+      .collection("mensajes")
+      .countDocuments({
+        idMatch: match._id,
+        idEmisor: { $ne: userObjId || userId },
+        leido: { $ne: true },
+      })
+
     chats.push({
       id: match._id!.toString(),
       matchId: match._id!.toString(),
@@ -119,7 +128,7 @@ export async function getUserChats(userId: string): Promise<ChatWithProfile[]> {
               : lastMessage.idEmisor,
           }
         : undefined,
-      unreadCount: match.mensajesNoLeidos || 0,
+      unreadCount: unreadCount,
       createdAt: new Date(match.creadoEn).toISOString(),
     })
   }
@@ -184,12 +193,11 @@ export async function sendMessage(
 
   const result = await db.collection("mensajes").insertOne(messageDoc)
 
-  // Update match's last message timestamp and increment unread count
+  // Update match's last message timestamp only
   await db.collection("matches").updateOne(
     { _id: matchObjId },
     {
       $set: { ultimoMensajeEn: now },
-      $inc: { mensajesNoLeidos: 1 },
     }
   )
 
@@ -220,19 +228,11 @@ export async function markMessagesAsRead(matchId: string, userId: string): Promi
   await db.collection("mensajes").updateMany(
     {
       idMatch: matchObjId,
-      idEmisor: { $ne: userObjId },
+      idEmisor: { $ne: userObjId || userId },
       leido: { $ne: true },
     },
     {
       $set: { leido: true },
-    }
-  )
-
-  // Reset unread count for this match
-  await db.collection("matches").updateOne(
-    { _id: matchObjId },
-    {
-      $set: { mensajesNoLeidos: 0 },
     }
   )
 }

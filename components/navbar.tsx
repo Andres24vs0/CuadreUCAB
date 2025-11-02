@@ -4,11 +4,18 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Heart, MessageCircle, User } from "lucide-react"
-import { getTotalUnreadCount } from "@/lib/mock-chats"
+import { useChats } from "@/lib/queries/chat-queries"
+import { useMemo } from "react"
 
 export function Navbar() {
   const pathname = usePathname()
-  const unreadCount = getTotalUnreadCount()
+  const { data: chats } = useChats()
+
+  // Calculate total unread count from real chat data
+  const unreadCount = useMemo(() => {
+    if (!chats) return 0
+    return chats.reduce((total, chat) => total + chat.unreadCount, 0)
+  }, [chats])
 
   const navItems = [
     { href: "/descubrir", label: "Descubrir", icon: Heart },

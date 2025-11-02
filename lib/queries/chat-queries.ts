@@ -51,6 +51,7 @@ export interface ChatData {
  */
 export function useChats() {
   const userId = useAuthStore((state) => state.userId)
+  const hasHydrated = useAuthStore((state) => state.hasHydrated)
 
   return useQuery<ChatWithProfile[], Error>({
     queryKey: ["chats", userId],
@@ -63,16 +64,18 @@ export function useChats() {
       }
       return response.json()
     },
-    enabled: !!userId,
+    enabled: !!userId && hasHydrated,
     staleTime: 30000, // 30 seconds
   })
 }
 
 /**
  * Hook to get messages for a specific chat
+ * Also marks messages as read automatically
  */
 export function useChat(chatId: string) {
   const userId = useAuthStore((state) => state.userId)
+  const queryClient = useQueryClient()
 
   return useQuery<ChatData, Error>({
     queryKey: ["chat", chatId, userId],
@@ -83,6 +86,10 @@ export function useChat(chatId: string) {
       if (!response.ok) {
         throw new Error("Failed to fetch chat")
       }
+
+      // Invalidate chats list since we just marked messages as read
+      queryClient.invalidateQueries({ queryKey: ["chats", userId] })
+
       return response.json()
     },
     enabled: !!userId && !!chatId,
@@ -97,7 +104,7 @@ export function useSendMessage(chatId: string) {
   const userId = useAuthStore((state) => state.userId)
   const queryClient = useQueryClient()
 
-  return useMutation<Message, Error, string>({
+  return useMutation<Message, Error, string, { previousChat?: ChatData }>({
     mutationFn: async (text: string) => {
       if (!userId) throw new Error("User not authenticated")
 

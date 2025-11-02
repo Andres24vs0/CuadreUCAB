@@ -9,6 +9,8 @@ import type { Profile } from "@/components/profile-card"
 import { useRouter } from "next/navigation"
 import { useChats } from "@/lib/queries/chat-queries"
 
+export const dynamic = "force-dynamic"
+
 export default function ChatsPage() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -101,6 +103,7 @@ export default function ChatsPage() {
                           e.stopPropagation()
                           const profile: Profile = {
                             id: chat.otherUser.id,
+                            discoverableScore: 0,
                             nombre: chat.otherUser.nombre,
                             fechaNacimiento: "",
                             genero: "",

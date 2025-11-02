@@ -9,10 +9,10 @@ import pusherServer from "@/lib/pusher-server"
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  { params }: { params: Promise<{ chatId: string }> }
 ) {
+  const { chatId } = await params
   try {
-    const chatId = params.chatId
     const body = await request.json()
     const { userId, text } = body
 
@@ -54,7 +54,7 @@ export async function POST(
 
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
-    console.error(`[POST /api/chats/${params.chatId}/messages] Error:`, error)
+    console.error(`[POST /api/chats/${chatId}/messages] Error:`, error)
     return NextResponse.json(
       { error: "Failed to send message" },
       { status: 500 }

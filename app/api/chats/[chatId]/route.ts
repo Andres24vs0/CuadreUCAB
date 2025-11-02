@@ -8,10 +8,10 @@ import { getMatch, getMatchMessages, getOtherUserInMatch, markMessagesAsRead } f
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  { params }: { params: Promise<{ chatId: string }> }
 ) {
+  const { chatId } = await params
   try {
-    const chatId = params.chatId
     const searchParams = request.nextUrl.searchParams
     const userId = searchParams.get("userId")
 
@@ -46,7 +46,7 @@ export async function GET(
       matchId: chatId,
     })
   } catch (error) {
-    console.error(`[GET /api/chats/${params.chatId}] Error:`, error)
+    console.error(`[GET /api/chats/${chatId}] Error:`, error)
     return NextResponse.json(
       { error: "Failed to fetch chat" },
       { status: 500 }

@@ -12,6 +12,8 @@ import { useChat, useSendMessage } from "@/lib/queries/chat-queries"
 import { useAuthStore } from "@/lib/stores/auth-store"
 import { usePusherChat } from "@/lib/hooks/usePusherChat"
 
+export const dynamic = "force-dynamic"
+
 export default function ChatPage() {
   const params = useParams()
   const router = useRouter()
@@ -53,6 +55,7 @@ export default function ChatPage() {
     if (chatData?.otherUser) {
       const profile: Profile = {
         id: chatData.otherUser.id,
+        discoverableScore: 0,
         nombre: chatData.otherUser.nombre,
         fechaNacimiento: chatData.otherUser.fechaNacimiento || "",
         genero: chatData.otherUser.genero,
