@@ -8,6 +8,8 @@ import { ProfileCardModal } from "@/components/profile-card-modal"
 import type { Profile } from "@/components/profile-card"
 import { useRouter } from "next/navigation"
 import { useChats } from "@/lib/queries/chat-queries"
+import { useUserActivity } from "@/lib/hooks/useUserActivity"
+import { LastSeen } from "@/components/last-seen"
 
 export const dynamic = "force-dynamic"
 
@@ -18,6 +20,9 @@ export default function ChatsPage() {
 
   // Fetch chats from database
   const { data: chats, isLoading, error } = useChats()
+
+  // Track user activity for last connection
+  useUserActivity()
 
   const handleProfileClick = (profile: Profile) => {
     setSelectedProfile(profile)
@@ -129,9 +134,12 @@ export default function ChatsPage() {
                         />
                       </button>
 
-                      <div className="flex flex-1 flex-col">
+                      <div className="flex flex-1 flex-col gap-1">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-semibold text-foreground">{chat.otherUser.nombre}</h3>
+                          <div className="flex flex-col">
+                            <h3 className="font-semibold text-foreground">{chat.otherUser.nombre}</h3>
+                            <LastSeen lastConnection={chat.otherUser.ultimaConexion} />
+                          </div>
                           {chat.lastMessage && (
                             <span className="text-xs text-muted-foreground">
                               {new Date(chat.lastMessage.timestamp).toLocaleDateString("es-ES", {

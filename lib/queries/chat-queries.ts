@@ -10,6 +10,7 @@ export interface ChatWithProfile {
     email: string
     fotos: string[]
     carrera: string
+    ultimaConexion?: string | null
   }
   lastMessage?: {
     text: string
@@ -42,6 +43,7 @@ export interface ChatData {
     intereses: string[]
     atributosFisicos: Record<string, any>
     fechaNacimiento: string | null
+    ultimaConexion?: string | null
   } | null
   matchId: string
 }

@@ -27,6 +27,7 @@ export interface ChatWithProfile {
     email: string
     fotos: string[]
     carrera: string
+    ultimaConexion?: string | null
   }
   lastMessage?: {
     text: string
@@ -118,6 +119,9 @@ export async function getUserChats(userId: string): Promise<ChatWithProfile[]> {
         email: otherUserDoc.email,
         fotos: otherUserDoc.perfil?.fotos || [],
         carrera: otherUserDoc.perfil?.carrera || "",
+        ultimaConexion: otherUserDoc.ultimaConexion
+          ? new Date(otherUserDoc.ultimaConexion).toISOString()
+          : null,
       },
       lastMessage: lastMessage
         ? {
@@ -314,6 +318,9 @@ export async function getOtherUserInMatch(matchId: string, currentUserId: string
     atributosFisicos: otherUserDoc.perfil?.atributosFisicos || {},
     fechaNacimiento: otherUserDoc.perfil?.fechaNacimiento
       ? new Date(otherUserDoc.perfil.fechaNacimiento).toISOString()
+      : null,
+    ultimaConexion: otherUserDoc.ultimaConexion
+      ? new Date(otherUserDoc.ultimaConexion).toISOString()
       : null,
   }
 }

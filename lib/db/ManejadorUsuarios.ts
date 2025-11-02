@@ -191,3 +191,38 @@ export async function updateProfile(
   return updatedDoc ? toPublic(updatedDoc) : null
 }
 
+/**
+ * Update user's last connection time
+ * @param id - User ID (ObjectId string or email)
+ */
+export async function updateLastConnection(id: string): Promise<void> {
+  const db = await getDb()
+
+  let existingDoc: DbUsuario | null = null
+
+  // Try to find by ObjectId first
+  if (ObjectId.isValid(id)) {
+    try {
+      existingDoc = (await db.collection('usuarios').findOne({ _id: new ObjectId(id) })) as DbUsuario | null
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Try by email if not found
+  if (!existingDoc) {
+    existingDoc = (await db.collection('usuarios').findOne({ email: id })) as DbUsuario | null
+  }
+
+  if (!existingDoc) {
+    console.debug('[updateLastConnection] User not found for id:', id)
+    return
+  }
+
+  // Update ultimaConexion
+  const filter = existingDoc._id ? { _id: existingDoc._id } : { email: id }
+  await db.collection('usuarios').updateOne(filter, {
+    $set: { ultimaConexion: new Date() }
+  })
+}
+

@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/queries/auth-queries"
+import { useUserActivity } from "@/lib/hooks/useUserActivity"
 
 /**
  * Protected layout for dashboard routes
@@ -16,6 +17,9 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const { isAuthenticated, hasHydrated } = useAuth()
+
+  // Track user activity for last connection throughout the dashboard
+  useUserActivity()
 
   // Wait for store to hydrate from localStorage
   if (!hasHydrated) {

@@ -11,6 +11,8 @@ import type { Profile } from "@/components/profile-card"
 import { useChat, useSendMessage } from "@/lib/queries/chat-queries"
 import { useAuthStore } from "@/lib/stores/auth-store"
 import { usePusherChat } from "@/lib/hooks/usePusherChat"
+import { useUserActivity } from "@/lib/hooks/useUserActivity"
+import { LastSeen } from "@/components/last-seen"
 
 export const dynamic = "force-dynamic"
 
@@ -26,6 +28,9 @@ export default function ChatPage() {
 
   // Subscribe to Pusher for real-time updates
   usePusherChat(chatId)
+
+  // Track user activity for last connection
+  useUserActivity()
 
   const [message, setMessage] = useState("")
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
@@ -134,7 +139,7 @@ export default function ChatPage() {
 
           <div className="text-left">
             <h2 className="font-semibold text-foreground">{chatData.otherUser?.nombre || "Usuario"}</h2>
-            <p className="text-sm text-muted-foreground">{chatData.otherUser?.carrera || ""}</p>
+            <LastSeen lastConnection={chatData.otherUser?.ultimaConexion} />
           </div>
         </button>
       </div>
