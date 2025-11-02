@@ -2,14 +2,34 @@ import { getDb } from "@/lib/mongo"
 import { ObjectId } from "mongodb"
 import { getProfileById } from "./ManejadorUsuarios"
 
+/*
+  ManejadorSwipes.ts
+
+  Este archivo contiene la lógica del backend encargada de:
+  - Calcular un "score de descubribilidad" para perfiles (funciones de scoring).
+  - Recuperar perfiles que aún no ha visto un usuario y ordenarlos por relevancia.
+  - Crear/actualizar swipes (like/pass) y detectar matches mutuos.
+
+  Comentarios en español se añaden para explicar qué hace cada función, los
+  parámetros esperados y los pasos importantes dentro de las consultas y cálculos.
+*/
+
 /**
- * Pesos de las características para el sistema de scoring
+ * Pesos de las características para el sistema de scoring.
+ *
+ * Estos pesos se usan para combinar diferentes sub-scores (género, intereses,
+ * carrera, edad, aspecto físico) en un solo valor numérico que representa
+ * la relevancia o "descubribilidad" de un perfil para otro.
+ *
+ * Nota: el score de conexión (última conexión) no tiene peso aquí porque se
+ * aplica como una máscara multiplicativa al final (ver `calculateConnectionScore`).
  */
 const FEATURE_WEIGHTS = {
   GENDER: 0.40,      // 40%
-  INTERESTS: 0.30,   // 30%
+  INTERESTS: 0.20,   // 20% (reduced to make room for PHYSICAL)
   CAREER: 0.20,      // 20%
   AGE: 0.10,         // 10%
+  PHYSICAL: 0.10,    // 10% - new score based on liked targets' physical attributes
 } as const
 
 /**
@@ -18,8 +38,17 @@ const FEATURE_WEIGHTS = {
 const MIN_SCORE_THRESHOLD = 0.30
 
 /**
- * Calcula el score de coincidencia de género
- * @returns Score de 0 a 1 (0 = no coincide, 1 = coincide perfectamente)
+ * Calcula el score de coincidencia de género.
+ *
+ * Entrada:
+ *  - `profileGenderSeeking`: valor definido en el perfil objetivo indicando
+ *    qué géneros acepta (p. ej. "hombre", "mujer", "todos" o datos legacy).
+ *  - `currentUserGender`: género del usuario actual.
+ *
+ * Comportamiento:
+ *  - Si `profileGenderSeeking` es "todos" => score 1.
+ *  - Si coincide exactamente con `currentUserGender` => score 1.
+ *  - En cualquier otro caso => score 0.
  */
 function calculateGenderScore(
   profileGenderSeeking: string,
@@ -43,8 +72,15 @@ function calculateGenderScore(
 }
 
 /**
- * Calcula el score de coincidencia de intereses basado en el porcentaje de intereses comunes
- * @returns Score de 0 a 1 (porcentaje de intereses comunes)
+ * Calcula el score de coincidencia de intereses.
+ *
+ * Entrada:
+ *  - `currentUserInterests`: arreglo de intereses del usuario actual.
+ *  - `profileInterests`: arreglo de intereses del perfil objetivo.
+ *
+ * Salida:
+ *  - Proporción de intereses comunes con respecto al número de intereses del usuario actual.
+ *  - Se normaliza todo a minúsculas y se usa set para evitar duplicados.
  */
 function calculateInterestsScore(
   currentUserInterests: string[],
@@ -79,38 +115,69 @@ function calculateInterestsScore(
 }
 
 /**
- * Calcula el score de coincidencia de carrera
- * @returns Score de 0 a 1
+ * Calcula el score de coincidencia de carrera profesional.
+ *
+ * Parámetros:
+ *  - `currentUserCareer`: carrera del usuario actual.
+ *  - `profileCareer`: carrera del perfil objetivo.
+ *  - `profileCareerPreference`: preferencia que el perfil objetivo indicó
+ *    respecto a la carrera ("misma", "otra", "todas" o vacío).
+ *
+ * Lógica:
+ *  - Si el perfil objetivo no especifica preferencia o indica "todas" => score 1.
+ *  - Si indica "misma" y las carreras coinciden => score 1.
+ *  - Si indica "otra" y las carreras son distintas => score 1.
+ *  - En cualquier otro caso => score 0.
  */
 function calculateCareerScore(
   currentUserCareer: string,
-  profileCareer: string
+  profileCareer: string,
+  profileCareerPreference: string
 ): number {
   if (!currentUserCareer || !profileCareer) {
     return 0
   }
 
+  //Cuando el usuario selecciona "todas" o no especifica preferencia, se da score completo
+  if(!profileCareerPreference || profileCareerPreference === "" || profileCareerPreference.toLowerCase() === "todas") {
+    return 1.0
+  }
   const currentCareerLower = currentUserCareer.toLowerCase().trim()
   const profileCareerLower = profileCareer.toLowerCase().trim()
 
-  // Misma carrera = score completo
-  if (currentCareerLower === profileCareerLower) {
-    return 1.0
+  // Preferencia de misma carrera, Misma carrera = score completo
+  if(profileCareerPreference.toLowerCase() === "misma" && currentCareerLower === profileCareerLower) {
+      return 1.0
+  }
+  
+  // Preferencia de carrera diferente, Carrera diferente = score completo
+  if(profileCareerPreference.toLowerCase() === "otra" && currentCareerLower !== profileCareerLower) {
+      return 1.0
   }
 
-  // Carrera diferente = score parcial (0.5)
-  return 0.5
+  //Si las preferencias del usuario a revisar no entra la carrera del usuario actual da score 0
+  return 0
+  
 }
 
 /**
- * Calcula el score de proximidad de edad
- * @returns Score de 0 a 1 basado en qué tan cerca está la edad del centro ideal del rango
+ * Calcula el score de proximidad de edad.
+ *
+ * Comportamiento:
+ *  - Si la edad del perfil está fuera del rango explícito del usuario => 0.
+ *  - Si el rango es inválido (min >= max) => 1.
+ *  - Se calcula la distancia a la edad ideal (centro del rango) y se normaliza.
+ *  - El factor final reduce el score hasta 0.5 en los extremos y 1.0 en el centro.
  */
 function calculateAgeScore(
   profileAge: number,
   currentUserMinAge: number,
   currentUserMaxAge: number
 ): number {
+  // Si la edad del perfil está fuera del rango explícito del usuario, dar score 0
+  if (typeof profileAge !== 'number' || profileAge <= 0) return 0
+  if (profileAge < currentUserMinAge || profileAge > currentUserMaxAge) return 0
+
   const ageRange = currentUserMaxAge - currentUserMinAge
   if (ageRange <= 0) {
     return 1.0
@@ -130,13 +197,155 @@ function calculateAgeScore(
 }
 
 /**
+ * Calcula el score de apariencia física para un candidato respecto al usuario actual.
+ *
+ * Propósito:
+ *  - Extraer señales implícitas de preferencia del candidato analizando a quiénes ha dado
+ *    "like" en el pasado. Si esas personas tienen ojos/cabello similares al `currentUser`,
+ *    el candidato es probablemente más atraído por características físicas como las del usuario.
+ *
+ * Limitaciones y consideraciones:
+ *  - Es una heurística débil: depende de que el candidato haya dado likes suficientes.
+ *  - Se limita a 50 targets para controlar la latencia.
+ *  - Puede considerarse para precomputación si el rendimiento es crítico.
+ */
+async function calculatePhysicalScore(
+  candidateProfile: any,
+  currentUser: any,
+  usuariosCollection: any,
+  swipesCollection: any
+): Promise<number> {
+  let physicalScore = 0
+  try {
+    // Extraer id del candidato (puede ser ObjectId en _id o string en id)
+    const candidateId = candidateProfile._id ? candidateProfile._id.toString() : candidateProfile.id
+    if (!candidateId) return 0
+
+  // Preparar query para obtener los "likes" emitidos por el candidato
+    const candidateObjId = ObjectId.isValid(candidateId) ? new ObjectId(candidateId) : null
+    const candidateLikesQuery: any = candidateObjId
+      ? { idEmisor: candidateObjId, accion: 'like' }
+      : { idEmisor: candidateId, accion: 'like' }
+
+    // Obtener los swipes (likes) que el candidato ha hecho
+    const likedTargets = await swipesCollection.find(candidateLikesQuery).toArray()
+
+  // Normalizar ids de los receptores de esos likes a strings
+    const targetIds = likedTargets
+      .map((s: any) => {
+        const r = s.idReceptor
+        if (r instanceof ObjectId) return r.toString()
+        if (typeof r === 'string') return r
+        return r?.toString() || ''
+      })
+      .filter(Boolean)
+
+  // Si no hay targets liked, no hay información para calcular score físico
+    if (targetIds.length === 0) return 0
+
+    // Construir consulta para obtener los perfiles de los targets (preferir ObjectId si existen)
+    const targetObjectIds = targetIds.filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
+    const targetQuery: any = targetObjectIds.length > 0 ? { _id: { $in: targetObjectIds } } : { email: { $in: targetIds } }
+
+  // Limitar la búsqueda para evitar cargas grandes
+    const targetProfiles = await usuariosCollection.find(targetQuery).limit(50).toArray()
+
+    // Extraer atributos físicos del usuario actual para la comparación
+    const userEyes = String(currentUser.perfil?.atributosFisicos?.colorOjos || '')
+    const userHair = String(currentUser.perfil?.atributosFisicos?.colorCabello || '')
+    let matchCount = 0
+    let totalChecked = 0
+
+  // Para cada target, comprobar coincidencias en ojos y cabello
+    for (const t of targetProfiles) {
+      const tEyes = (t.perfil?.atributosFisicos?.colorOjos ?? '') as any
+      const tHair = (t.perfil?.atributosFisicos?.colorCabello ?? '') as any
+      if (tEyes || tHair) {
+        totalChecked++
+        try {
+          // Normalizar y comparar en minúsculas para evitar discrepancias simples
+          const ue = String(userEyes || '').toLowerCase().trim()
+          const te = String(tEyes || '').toLowerCase().trim()
+          const uh = String(userHair || '').toLowerCase().trim()
+          const th = String(tHair || '').toLowerCase().trim()
+          // Sumar una unidad por cada coincidencia (ojos y cabello)
+          if (ue && te && ue === te) matchCount++
+          if (uh && th && uh === th) matchCount++
+        } catch (e) {
+          // Si hay problemas con coerción a string, ignorar y continuar
+        }
+      }
+    }
+
+    // Normalizar el score: cada target aporta hasta 2 coincidencias (ojos + cabello)
+    if (totalChecked > 0) {
+      const maxMatches = totalChecked * 2
+      physicalScore = Math.min(1, matchCount / maxMatches)
+    }
+  } catch (e) {
+  try { console.error('[calculatePhysicalScore] error', e) } catch {}
+  }
+
+  return physicalScore
+}
+
+/**
+ * Calcula un score de conexión basado en la fecha de `ultimaConexion`.
+ *
+ * - Parámetro: `ultimaConexion` puede ser una string ISO, un Date, o undefined/null.
+ * - Comportamiento: si la última conexión es hoy -> devuelve 1.0.
+ *   Si la última conexión fue hace mucho tiempo (por ejemplo, > 365 días) -> devuelve 0 aproximado.
+ *   Entre medias se aplica una interpolación exponencial o lineal (aquí se usa decaimiento exponencial suave).
+ * - Retorna número en [0,1]. No tiene peso porcentual: se usa como máscara multiplicativa
+ *   sobre el score total de descubribilidad.
+ */
+function calculateConnectionScore(ultimaConexion: any): number {
+  if (!ultimaConexion) return 0
+
+  let lastDate: Date | null = null
+  if (ultimaConexion instanceof Date) {
+    lastDate = ultimaConexion
+  } else {
+    const parsed = new Date(ultimaConexion)
+    if (!isNaN(parsed.getTime())) {
+      lastDate = parsed
+    }
+  }
+
+  if (!lastDate) return 0
+
+  const now = new Date()
+  const msDiff = now.getTime() - lastDate.getTime()
+  if (msDiff < 0) return 1 // fecha en el futuro, considerarla como muy reciente
+
+  const days = msDiff / (1000 * 60 * 60 * 24)
+
+  // Parámetros de decaimiento:
+  // - Si fue hoy (days < 1) => 1
+  // - Si fue hace 365 días o más => 0 (o cercano a 0)
+  // Usamos una función de decaimiento exponencial para dar más peso a conexiones recientes.
+  const MAX_DAYS = 365
+  if (days <= 1) return 1
+
+  // Decaimiento exponencial suave: score = exp( -k * days ) con k ajustado para que
+  // exp(-k * MAX_DAYS) ~ 0.01 (prácticamente 0). k = -ln(0.01)/MAX_DAYS
+  const k = -Math.log(0.01) / MAX_DAYS
+  const score = Math.exp(-k * days)
+
+  // Asegurar rango [0,1]
+  return Math.max(0, Math.min(1, score))
+}
+
+/**
  * Calcula el score de descubribilidad para un perfil
  * @returns Score de 0 a 1 (0% a 100%)
  */
-function calculateDiscoverableScore(
+async function calculateDiscoverableScore(
   profile: any,
-  currentUser: any
-): number {
+  currentUser: any,
+  usuariosCollection: any,
+  swipesCollection: any
+): Promise<number> {
   const profilePreferences = profile.perfil?.preferencias || {}
   const currentUserPreferences = currentUser.perfil?.preferencias || {}
   const currentUserGender = currentUser.perfil?.genero || ""
@@ -179,7 +388,8 @@ function calculateDiscoverableScore(
 
   const careerScore = calculateCareerScore(
     currentUserCareer,
-    profile.perfil?.carrera || ""
+    profile.perfil?.carrera || "",
+    profilePreferences.preferenciaCarrera || ""
   )
 
   const ageScore = calculateAgeScore(
@@ -188,15 +398,40 @@ function calculateDiscoverableScore(
     currentUserMaxAge
   )
 
-  // Calcular score total ponderado
+  // Calcular score total ponderado (sin PHYSICAL)
   const totalScore =
     genderScore * FEATURE_WEIGHTS.GENDER +
     interestsScore * FEATURE_WEIGHTS.INTERESTS +
     careerScore * FEATURE_WEIGHTS.CAREER +
     ageScore * FEATURE_WEIGHTS.AGE
 
-  return Math.min(Math.max(totalScore, 0), 1)
+  // Compute physical score (async) and include with its weight
+  let physicalScore = 0
+  try {
+    physicalScore = await calculatePhysicalScore(profile, currentUser, usuariosCollection, swipesCollection)
+  } catch (e) {
+  try { console.error('[calculateDiscoverableScore] calculatePhysicalScore failed', e) } catch {}
+  }
+
+  const finalScore = totalScore + (physicalScore * (FEATURE_WEIGHTS.PHYSICAL || 0))
+
+  // --- Aplicar máscara de conexión ---
+  // El score de conexión actúa como una máscara: reduce el score final si el
+  // perfil objetivo no se ha conectado recientemente. Esto evita promover perfiles
+  // que podrían estar inactivos.
+  let connectionScore = 1
+  try {
+    connectionScore = calculateConnectionScore(profile.ultimaConexion)
+  } catch (e) {
+    try { console.error('[calculateDiscoverableScore] calculateConnectionScore failed', e) } catch {}
+  }
+
+  const maskedScore = finalScore * connectionScore
+  // Asegurar que el valor devuelto está dentro de [0,1]
+  return Math.min(Math.max(maskedScore, 0), 1)
 }
+
+
 
 /**
  * Obtiene perfiles que el usuario aún no ha visto
@@ -218,6 +453,7 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   const currentUserCareer = currentUser.perfil.carrera || ""
   
   // Obtener usuarios que el usuario actual ya ha visto
+  // Colección de swipes usada varias veces en este flujo
   const swipesCollection = db.collection("swipes")
   
   // Construir query para encontrar swipes (MongoDB puede almacenar idEmisor como ObjectId o string)
@@ -231,8 +467,11 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
       }
     : { idEmisor: userId }
   
+  // Recuperar todos los swipes que el usuario ha emitido (para excluir perfiles ya vistos)
   const swipes = await swipesCollection.find(swipeQuery).toArray()
   
+  // Extraer los ids de los receptores que el usuario ya ha visto (para excluirlos)
+  // Se normalizan a string para manejar ObjectId o valores string legacy.
   const swipedUserIds = swipes.map((s) => {
     const receptor = s.idReceptor
     if (receptor instanceof ObjectId) return receptor.toString()
@@ -272,19 +511,13 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     }
     
     // Filtrar por rango de edad
+    // Nota: movemos el filtrado por rango de edad a la fase en JS más abajo
+    // para soportar documentos cuyo `perfil.fechaNacimiento` está guardado
+    // como string (legacy). Aquí sólo guardamos las preferencias para usar
+    // después en memoria.
     if (preferences.rangoEdad) {
-      const minAge = preferences.rangoEdad.min || 18
-      const maxAge = preferences.rangoEdad.max || 99
-      const minBirthYear = new Date().getFullYear() - maxAge
-      const maxBirthYear = new Date().getFullYear() - minAge
-      
-      if (!query["$and"]) query["$and"] = []
-      query["$and"].push({
-        "perfil.fechaNacimiento": {
-          $gte: new Date(minBirthYear, 0, 1),
-          $lte: new Date(maxBirthYear, 11, 31),
-        },
-      })
+      // El filtrado por rango de edad se aplicará en JS más abajo (soporta strings/Date)
+      // No añadimos nada al query de Mongo para evitar filtrar documentos inesperadamente.
     }
     
     // Filtrar por preferencia de carrera
@@ -313,7 +546,24 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   }
   
   const usuariosCollection = db.collection("usuarios")
+  // Buscar candidatos que cumplan con los filtros básicos. Se solicita 3x el
+  // límite final para tener margen después de aplicar scoring y truncado.
   const allProfiles = await usuariosCollection.find(query).limit(limit * 3).toArray()
+
+  // Log de depuración: imprimir perfiles recuperados (id, nombre, email, genero)
+  try {
+    console.log(`DEBUG: Se recuperaron ${allProfiles.length} perfiles (pre-scoring):`)
+    for (const p of allProfiles) {
+      const pid = p._id ? p._id.toString() : (p.id || '')
+      const nombre = p.perfil?.nombre || ''
+      const email = p.email || ''
+      const genero = p.perfil?.genero || ''
+      const carrera =p.perfil?.carrera || ''
+      console.log(` - ${pid} | ${nombre} | ${email} | ${genero} | ${carrera}`)
+    }
+  } catch (e) {
+    try { console.error('[getDiscoverableProfiles] error logging allProfiles', e) } catch {}
+  }
 
   // Calcular edad del usuario actual
   let currentUserAge: number | null = null
@@ -329,44 +579,84 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     }
   }
 
-  // Aplicar filtros mínimos obligatorios (matching bidireccional)
+  // Aplicar filtros mínimos obligatorios (matching bidireccional):
+  //  - El perfil objetivo debe estar buscando el género del usuario actual (o 'todos')
+  //  - El rango de edad del perfil objetivo debe incluir la edad del usuario actual
+  // Esto reduce la lista antes de aplicar scoring más costoso.
+  //
+  // Nota: se normaliza `generoBuscado` porque puede estar almacenado en formatos legacy.
+  // Además aplicamos el filtro por rango de edad en JS para soportar fechas
+  // almacenadas como string (legacy) que no coincidirían con la comparación por Date en Mongo.
+
+  function parseBirthDate(value: any): Date | null {
+    if (!value) return null
+    if (value instanceof Date) return value
+    // Manejar exports BSON con { $date: ... }
+    if (typeof value === 'object' && value.$date) {
+      const d = new Date(value.$date)
+      return isNaN(d.getTime()) ? null : d
+    }
+    if (typeof value === 'string') {
+      const d = new Date(value)
+      return isNaN(d.getTime()) ? null : d
+    }
+    try {
+      const d = new Date(value)
+      return isNaN(d.getTime()) ? null : d
+    } catch (e) {
+      return null
+    }
+  }
+
   const profilesPassingThreshold = allProfiles.filter((profile: any) => {
     const profilePreferences = profile.perfil?.preferencias
     if (!profilePreferences) return false
 
-    const profileGenderSeeking = profilePreferences.generoBuscado
-    
-    // Umbral mínimo 1: El perfil debe estar buscando el género del usuario actual
-    if (!profileGenderSeeking || profileGenderSeeking === "") {
-      return false
+    // generoBuscado puede ser string o array (legacy). Normalizar a string.
+    let profileGenderSeeking: string | string[] | undefined = profilePreferences.generoBuscado
+    if (Array.isArray(profileGenderSeeking)) {
+      profileGenderSeeking = profileGenderSeeking.find((g) => !!g) || profileGenderSeeking[0]
     }
-    
-    const genderMatch = profileGenderSeeking === "todos" || 
-      profileGenderSeeking.toLowerCase() === currentUserGender.toLowerCase()
-    
+
+    // Umbral mínimo 1: El perfil debe estar buscando el género del usuario actual
+    if (!profileGenderSeeking || profileGenderSeeking === "") return false
+    const seeking = typeof profileGenderSeeking === 'string' ? profileGenderSeeking.toLowerCase() : ''
+    const currentGender = typeof currentUserGender === 'string' ? currentUserGender.toLowerCase() : ''
+    const genderMatch = seeking === 'todos' || seeking === currentGender
     if (!genderMatch) return false
-    
+
     // Umbral mínimo 2: La edad del usuario actual debe estar en el rango buscado por el perfil
     if (currentUserAge !== null && profilePreferences.rangoEdad) {
       const profileMinAge = profilePreferences.rangoEdad.min || 18
       const profileMaxAge = profilePreferences.rangoEdad.max || 99
-      
-      if (currentUserAge < profileMinAge || currentUserAge > profileMaxAge) {
-        return false
-      }
+      const birth = parseBirthDate(profile.perfil?.fechaNacimiento)
+      if (!birth) return false
+      const today = new Date()
+      let pAge = today.getFullYear() - birth.getFullYear()
+      const monthDiff = today.getMonth() - birth.getMonth()
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) pAge--
+      if (pAge < profileMinAge || pAge > profileMaxAge) return false
     }
-    
+
     return true
   })
 
   // Calcular score de descubribilidad para cada perfil
-  const profilesWithScores = profilesPassingThreshold.map((profile: any) => {
-    const score = calculateDiscoverableScore(profile, currentUser)
-    return {
-      profile,
-      discoverableScore: score,
-    }
-  })
+  // El cálculo de score puede hacer consultas adicionales (p. ej. `calculatePhysicalScore`
+  // que mira los swipes del candidato) por eso es una operación async y potencialmente costosa.
+  const profilesWithScores = await Promise.all(
+    profilesPassingThreshold.map(async (profile: any) => {
+
+      // calculateDiscoverableScore now includes the physical score internally
+  // Para cada candidato calculamos su score combinado (gender/interests/career/age/physical)
+  // `calculateDiscoverableScore` puede realizar lecturas adicionales en `swipes`/`usuarios`.
+  const finalScore = await calculateDiscoverableScore(profile, currentUser, usuariosCollection, swipesCollection)
+      return {
+        profile,
+        discoverableScore: finalScore,
+      }
+    })
+  )
 
   // Filtrar por umbral mínimo de score (30%)
   const profilesAboveThreshold = profilesWithScores.filter(
@@ -448,6 +738,13 @@ export async function createSwipe(
   idReceptor: string,
   accion: "like" | "pass"
 ) {
+  // Función responsable de insertar o actualizar un swipe (like/pass) y
+  // detectar si hay un match mutuo. Pasos principales:
+  // 1. Normalizar los ids a ObjectId cuando corresponda.
+  // 2. Verificar si ya existe un swipe previo -> actualizarlo.
+  // 3. Si no existe -> insertar uno nuevo.
+  // 4. Si la acción es 'like', comprobar si el receptor previamente dio like al emisor
+  //    para crear un documento de match si es necesario.
   const db = await getDb()
   const swipesCollection = db.collection("swipes")
   const matchesCollection = db.collection("matches")
@@ -499,17 +796,20 @@ export async function createSwipe(
         },
       })
 
-      if (!existingMatch) {
-        // Crear nuevo match
-        await matchesCollection.insertOne({
-          participantes: [idEmisorObj, idReceptorObj],
-          creadoEn: new Date(),
-          ultimoMensajeEn: null,
-          mensajesNoLeidos: 0,
-        })
-
-        return { isMatch: true }
+      if (existingMatch) {
+        // Si ya existe el match, retornar su id para que el cliente pueda abrirlo
+        return { isMatch: true, matchId: existingMatch._id?.toString() }
       }
+
+      // Crear nuevo match y retornar su id
+      const insertResult = await matchesCollection.insertOne({
+        participantes: [idEmisorObj, idReceptorObj],
+        creadoEn: new Date(),
+        ultimoMensajeEn: null,
+        mensajesNoLeidos: 0,
+      })
+
+      return { isMatch: true, matchId: insertResult.insertedId.toString() }
     }
   }
 

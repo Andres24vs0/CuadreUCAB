@@ -15,20 +15,29 @@ interface MatchModalProps {
   onClose: () => void
   matchedProfile: Profile | null
   currentUserPhoto: string
+  matchId?: string | null
 }
 
-export function MatchModal({ isOpen, onClose, matchedProfile, currentUserPhoto }: MatchModalProps) {
+export function MatchModal({ isOpen, onClose, matchedProfile, currentUserPhoto, matchId }: MatchModalProps) {
   const router = useRouter()
 
   if (!matchedProfile) return null
 
   const handleGoToChat = () => {
+    // Si se nos pasa un matchId del servidor (match recién creado), navegar usando ese id
+    if (matchId) {
+      router.push(`/chats/${matchId}`)
+      onClose()
+      return
+    }
+
+    // Si no hay matchId, intentar abrir un chat mock existente o crear uno local
     const existingChat = existingChats.find((chat) => chat.profile.id === matchedProfile.id)
 
     if (existingChat) {
       router.push(`/chats/${existingChat.id}`)
     } else {
-      // Create new chat ID
+      // Create new chat ID fallback (cliente-only)
       const newChatId = `chat-${matchedProfile.id}`
       router.push(`/chats/${newChatId}`)
     }

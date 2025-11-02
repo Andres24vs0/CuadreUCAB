@@ -6,52 +6,66 @@ import { ProfileCard, type Profile } from "@/components/profile-card"
 import { MatchModal } from "@/components/match-modal"
 import { useAuth } from "@/lib/queries/auth-queries"
 import { useDiscoverableProfiles, useCreateSwipe } from "@/lib/queries/user-queries"
+import type { DiscoverProfile } from "@/lib/api"
 import { useUserProfile } from "@/lib/queries/user-queries"
 
 export default function DescubrirPage() {
   const { userId } = useAuth()
-  const { data: profiles = [], isLoading: profilesLoading, error: profilesError } = useDiscoverableProfiles(userId)
+  const { data: profiles = [], isLoading: profilesLoading, error: profilesError, refetch } = useDiscoverableProfiles(userId)
   const { data: currentUserProfile } = useUserProfile(userId)
   const createSwipe = useCreateSwipe()
 
 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null)
+  const [matchedMatchId, setMatchedMatchId] = useState<string | null>(null)
   const [showMatchModal, setShowMatchModal] = useState(false)
   const [swipeDirection, setSwipeDirection] = useState<"left" | "right" | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [displayedProfile, setDisplayedProfile] = useState<Profile | null>(null)
+  const [isRefreshingProfiles, setIsRefreshingProfiles] = useState(false)
+  // Estado simplificado: no hay reintentos automáticos, solo retry manual
+  // `isRefreshingProfiles` se usa únicamente para mostrar spinner durante un refetch manual
 
   // Update displayed profile when profiles change
   useEffect(() => {
     if (profiles.length > 0 && currentIndex < profiles.length) {
-      setDisplayedProfile(profiles[currentIndex])
+      const p = profiles[currentIndex] as DiscoverProfile
+      setDisplayedProfile(mapDiscoverToProfile(p))
+      setIsRefreshingProfiles(false)
     } else if (profiles.length === 0) {
       setDisplayedProfile(null)
     }
-  }, [profiles, currentIndex])
+  }, [profiles, currentIndex, profilesLoading, profilesError, refetch, userId])
 
-  const currentProfile = profiles[currentIndex]
+  const rawCurrentProfile: DiscoverProfile | undefined = profiles[currentIndex]
   const currentUserPhoto = currentUserProfile?.fotos?.[0] || ""
 
-  const handleLike = async () => {
-    if (!currentProfile || !userId) return
+  // Helper: map API DiscoverProfile to UI Profile shape expected by ProfileCard
+  const mapDiscoverToProfile = (p: DiscoverProfile): Profile => ({
+    ...p,
+    discoverableScore: (p as any).discoverableScore ?? 0,
+  })
 
-    setSwipeDirection("right")
+  const handleLike = async () => {
+  if (!displayedProfile || !userId) return
+
+  setSwipeDirection("right")
     setIsTransitioning(true)
 
     try {
       // Create swipe in database
       const result = await createSwipe.mutateAsync({
         idEmisor: userId,
-        idReceptor: currentProfile.id,
+        idReceptor: displayedProfile.id,
         accion: "like",
       })
 
       setTimeout(() => {
         // Check if it's a match
-        if (result.isMatch || currentProfile.hasLikedYou) {
-          setMatchedProfile(currentProfile)
+        if (result.isMatch || displayedProfile.hasLikedYou) {
+          setMatchedProfile(displayedProfile)
+          setMatchedMatchId((result as any).matchId || null)
           setShowMatchModal(true)
         }
         moveToNextProfile()
@@ -69,7 +83,7 @@ export default function DescubrirPage() {
   }
 
   const handleDislike = async () => {
-    if (!currentProfile || !userId) return
+  if (!displayedProfile || !userId) return
 
     setSwipeDirection("left")
     setIsTransitioning(true)
@@ -78,7 +92,7 @@ export default function DescubrirPage() {
       // Create swipe in database
       await createSwipe.mutateAsync({
         idEmisor: userId,
-        idReceptor: currentProfile.id,
+        idReceptor: displayedProfile.id,
         accion: "pass",
       })
 
@@ -113,6 +127,7 @@ export default function DescubrirPage() {
   const handleCloseMatchModal = () => {
     setShowMatchModal(false)
     setMatchedProfile(null)
+  setMatchedMatchId(null)
   }
 
   return (
@@ -132,20 +147,43 @@ export default function DescubrirPage() {
           <div className="text-center">
             <p className="text-red-500">Error cargando perfiles: {String(profilesError)}</p>
           </div>
-        ) : !currentProfile || !displayedProfile ? (
-          <div className="text-center">
-            <h2 className="mb-2 text-2xl font-bold">No hay más perfiles</h2>
-            <p className="text-muted-foreground">
-              {profiles.length === 0 
-                ? "No hay perfiles disponibles que coincidan con tus preferencias" 
-                : "Ya has visto todos los perfiles disponibles. Vuelve más tarde para ver nuevos perfiles"}
-            </p>
-            {profiles.length > 0 && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Has visto {profiles.length} perfil{profiles.length !== 1 ? 'es' : ''}
+  ) : !displayedProfile ? (
+          // When we've exhausted local profiles either show a spinner while refreshing
+          // or show the fallback message plus a manual retry button.
+          isRefreshingProfiles || profilesLoading ? (
+            <div className="text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-ucab-maroon border-r-transparent"></div>
+              <p className="mt-4 text-gray-600">Buscando más perfiles...</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <h2 className="mb-2 text-2xl font-bold">No hay más perfiles</h2>
+              <p className="text-muted-foreground">
+                {profiles.length === 0 
+                  ? "No hay perfiles disponibles que coincidan con tus preferencias" 
+                  : "Ya has visto todos los perfiles disponibles. Vuelve más tarde para ver nuevos perfiles"}
               </p>
-            )}
-          </div>
+              {profiles.length > 0 && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Has visto {profiles.length} perfil{profiles.length !== 1 ? 'es' : ''}
+                </p>
+              )}
+              <div className="mt-4">
+                <button
+                  className="inline-flex items-center rounded-md bg-ucab-maroon px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                  onClick={() => {
+                    setIsRefreshingProfiles(true)
+                    void refetch()
+                      .catch((e) => console.error("Manual refetch failed:", e))
+                      .finally(() => setIsRefreshingProfiles(false))
+                  }}
+                >
+                  Buscar otra vez
+                </button>
+                
+              </div>
+            </div>
+          )
         ) : (
           <div className={`relative w-full max-w-5xl transition-opacity duration-200 ${isTransitioning ? "opacity-0" : "opacity-100"}`}>
             <div className="relative overflow-hidden w-full">
@@ -163,7 +201,8 @@ export default function DescubrirPage() {
       <MatchModal
         isOpen={showMatchModal}
         onClose={handleCloseMatchModal}
-        matchedProfile={matchedProfile}
+  matchedProfile={matchedProfile}
+  matchId={matchedMatchId}
         currentUserPhoto={currentUserPhoto}
       />
     </div>

@@ -135,8 +135,8 @@ export async function createSwipe(
   idEmisor: string,
   idReceptor: string,
   accion: "like" | "pass"
-): Promise<{ isMatch: boolean }> {
-  return apiFetch<{ isMatch: boolean }>("/api/swipes", {
+): Promise<{ isMatch: boolean; matchId?: string }> {
+  return apiFetch<{ isMatch: boolean; matchId?: string }>("/api/swipes", {
     method: "POST",
     body: JSON.stringify({ idEmisor, idReceptor, accion }),
   })
