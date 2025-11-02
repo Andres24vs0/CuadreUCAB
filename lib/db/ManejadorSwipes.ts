@@ -3,14 +3,211 @@ import { ObjectId } from "mongodb"
 import { getProfileById } from "./ManejadorUsuarios"
 
 /**
- * Get profiles that the user hasn't swiped on yet
- * Filters by user preferences with bidirectional matching and excludes already swiped profiles
- * Prioritizes by gender preference specificity and matching career
+ * Pesos de las características para el sistema de scoring
+ */
+const FEATURE_WEIGHTS = {
+  GENDER: 0.40,      // 40%
+  INTERESTS: 0.30,   // 30%
+  CAREER: 0.20,      // 20%
+  AGE: 0.10,         // 10%
+} as const
+
+/**
+ * Umbral mínimo de score (30%)
+ */
+const MIN_SCORE_THRESHOLD = 0.30
+
+/**
+ * Calcula el score de coincidencia de género
+ * @returns Score de 0 a 1 (0 = no coincide, 1 = coincide perfectamente)
+ */
+function calculateGenderScore(
+  profileGenderSeeking: string,
+  currentUserGender: string
+): number {
+  if (!profileGenderSeeking || profileGenderSeeking === "") {
+    return 0
+  }
+
+  // Si el perfil acepta todos los géneros, dar score completo
+  if (profileGenderSeeking.toLowerCase() === "todos") {
+    return 1.0
+  }
+
+  // Si el perfil busca un género específico, verificar si coincide con el género del usuario actual
+  if (profileGenderSeeking.toLowerCase() === currentUserGender.toLowerCase()) {
+    return 1.0
+  }
+
+  return 0
+}
+
+/**
+ * Calcula el score de coincidencia de intereses basado en el porcentaje de intereses comunes
+ * @returns Score de 0 a 1 (porcentaje de intereses comunes)
+ */
+function calculateInterestsScore(
+  currentUserInterests: string[],
+  profileInterests: string[]
+): number {
+  if (!currentUserInterests || currentUserInterests.length === 0) {
+    return 0
+  }
+
+  if (!profileInterests || profileInterests.length === 0) {
+    return 0
+  }
+
+  // Normalizar intereses a minúsculas para comparación
+  const currentInterestsSet = new Set(
+    currentUserInterests.map((i) => i.toLowerCase().trim())
+  )
+  const profileInterestsSet = new Set(
+    profileInterests.map((i) => i.toLowerCase().trim())
+  )
+
+  // Contar intereses comunes
+  let commonCount = 0
+  for (const interest of currentInterestsSet) {
+    if (profileInterestsSet.has(interest)) {
+      commonCount++
+    }
+  }
+
+  // Retornar porcentaje: intereses comunes / total de intereses del usuario actual
+  return commonCount / currentUserInterests.length
+}
+
+/**
+ * Calcula el score de coincidencia de carrera
+ * @returns Score de 0 a 1
+ */
+function calculateCareerScore(
+  currentUserCareer: string,
+  profileCareer: string
+): number {
+  if (!currentUserCareer || !profileCareer) {
+    return 0
+  }
+
+  const currentCareerLower = currentUserCareer.toLowerCase().trim()
+  const profileCareerLower = profileCareer.toLowerCase().trim()
+
+  // Misma carrera = score completo
+  if (currentCareerLower === profileCareerLower) {
+    return 1.0
+  }
+
+  // Carrera diferente = score parcial (0.5)
+  return 0.5
+}
+
+/**
+ * Calcula el score de proximidad de edad
+ * @returns Score de 0 a 1 basado en qué tan cerca está la edad del centro ideal del rango
+ */
+function calculateAgeScore(
+  profileAge: number,
+  currentUserMinAge: number,
+  currentUserMaxAge: number
+): number {
+  const ageRange = currentUserMaxAge - currentUserMinAge
+  if (ageRange <= 0) {
+    return 1.0
+  }
+
+  // La edad ideal es el centro del rango
+  const idealAge = (currentUserMinAge + currentUserMaxAge) / 2
+  const ageDiff = Math.abs(profileAge - idealAge)
+  
+  // Normalizar: el score disminuye conforme la edad se aleja del ideal
+  // En los extremos del rango, el score debería ser ~0.5
+  // En el centro, el score debería ser 1.0
+  const maxDistance = ageRange / 2
+  const normalizedDistance = Math.min(ageDiff / maxDistance, 1.0)
+  
+  return 1.0 - (normalizedDistance * 0.5)
+}
+
+/**
+ * Calcula el score de descubribilidad para un perfil
+ * @returns Score de 0 a 1 (0% a 100%)
+ */
+function calculateDiscoverableScore(
+  profile: any,
+  currentUser: any
+): number {
+  const profilePreferences = profile.perfil?.preferencias || {}
+  const currentUserPreferences = currentUser.perfil?.preferencias || {}
+  const currentUserGender = currentUser.perfil?.genero || ""
+  const currentUserCareer = currentUser.perfil?.carrera || ""
+  const currentUserInterests = Array.isArray(currentUser.perfil?.intereses)
+    ? currentUser.perfil.intereses
+    : []
+  const profileInterests = Array.isArray(profile.perfil?.intereses)
+    ? profile.perfil.intereses
+    : []
+
+  // Calcular edad del perfil
+  let profileAge = 0
+  if (profile.perfil?.fechaNacimiento) {
+    const birthDate = new Date(profile.perfil.fechaNacimiento)
+    if (!isNaN(birthDate.getTime())) {
+      const today = new Date()
+      profileAge = today.getFullYear() - birthDate.getFullYear()
+      const monthDiff = today.getMonth() - birthDate.getMonth()
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        profileAge--
+      }
+    }
+  }
+
+  // Obtener rango de edad del usuario actual
+  const currentUserMinAge = currentUserPreferences.rangoEdad?.min || 18
+  const currentUserMaxAge = currentUserPreferences.rangoEdad?.max || 99
+
+  // Calcular score de cada característica
+  const genderScore = calculateGenderScore(
+    profilePreferences.generoBuscado || "",
+    currentUserGender
+  )
+
+  const interestsScore = calculateInterestsScore(
+    currentUserInterests,
+    profileInterests
+  )
+
+  const careerScore = calculateCareerScore(
+    currentUserCareer,
+    profile.perfil?.carrera || ""
+  )
+
+  const ageScore = calculateAgeScore(
+    profileAge,
+    currentUserMinAge,
+    currentUserMaxAge
+  )
+
+  // Calcular score total ponderado
+  const totalScore =
+    genderScore * FEATURE_WEIGHTS.GENDER +
+    interestsScore * FEATURE_WEIGHTS.INTERESTS +
+    careerScore * FEATURE_WEIGHTS.CAREER +
+    ageScore * FEATURE_WEIGHTS.AGE
+
+  return Math.min(Math.max(totalScore, 0), 1)
+}
+
+/**
+ * Obtiene perfiles que el usuario aún no ha visto
+ * Utiliza sistema de scoring con pesos de características y umbral mínimo de 30%
+ * Filtra por preferencias del usuario con matching bidireccional y excluye perfiles ya vistos
+ * Retorna perfiles ordenados por score de descubribilidad (mayor a menor)
  */
 export async function getDiscoverableProfiles(userId: string, limit: number = 50) {
   const db = await getDb()
   
-  // Get current user profile to check preferences
+  // Obtener perfil del usuario actual para verificar preferencias
   const currentUser = await getProfileById(userId)
   if (!currentUser || !currentUser.perfil) {
     return []
@@ -20,11 +217,10 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   const currentUserGender = currentUser.perfil.genero || ""
   const currentUserCareer = currentUser.perfil.carrera || ""
   
-  // Get all swipes from current user (profiles they've already seen)
+  // Obtener usuarios que el usuario actual ya ha visto
   const swipesCollection = db.collection("swipes")
   
-  // Build query to find swipes - try both ObjectId and string formats
-  // MongoDB can store idEmisor as either ObjectId or string, so we need to check both
+  // Construir query para encontrar swipes (MongoDB puede almacenar idEmisor como ObjectId o string)
   const swipeQuery: any = currentUserObjId 
     ? { 
         $or: [
@@ -36,7 +232,6 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     : { idEmisor: userId }
   
   const swipes = await swipesCollection.find(swipeQuery).toArray()
-  console.log(`[ManejadorSwipes] Found ${swipes.length} swipes for user ${userId}`)
   
   const swipedUserIds = swipes.map((s) => {
     const receptor = s.idReceptor
@@ -45,47 +240,38 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     return receptor?.toString() || ""
   }).filter(Boolean)
   
-  console.log(`[ManejadorSwipes] Swiped user IDs:`, swipedUserIds)
-  
-  // Build query to exclude swiped users and current user
+  // Construir query para excluir usuarios ya vistos y el usuario actual
   const excludedIds = [...swipedUserIds, userId].filter(Boolean)
   const excludedObjectIds = excludedIds
     .filter((id) => ObjectId.isValid(id))
     .map((id) => new ObjectId(id))
   
-  // Build query conditions
   const excludeConditions: any[] = []
   
-  // Exclude by _id if we have ObjectIds
   if (excludedObjectIds.length > 0) {
     excludeConditions.push({ _id: { $nin: excludedObjectIds } })
   }
   
-  // Also exclude current user by email if userId is not an ObjectId
   if (!ObjectId.isValid(userId) && currentUser?.email) {
     excludeConditions.push({ email: { $ne: currentUser.email } })
   }
   
-  // Exclude swiped users by email if they're not ObjectIds
   const swipedEmails = swipedUserIds.filter(id => !ObjectId.isValid(id))
   if (swipedEmails.length > 0) {
     excludeConditions.push({ email: { $nin: swipedEmails } })
   }
   
-  const query: any = excludeConditions.length > 0 
-    ? { $and: excludeConditions }
-    : {}
+  const query: any = excludeConditions.length > 0 ? { $and: excludeConditions } : {}
 
-  // Filter by user preferences if available
+  // Filtrar por preferencias del usuario
   const preferences = currentUser.perfil.preferencias
   if (preferences) {
-    // Filter by gender preference (what current user is looking for)
-    // If "todos", we don't filter by gender but still apply other filters
+    // Filtrar por género buscado (si no es "todos")
     if (preferences.generoBuscado && preferences.generoBuscado !== "todos") {
       query["perfil.genero"] = preferences.generoBuscado
     }
     
-    // Filter by age range if available
+    // Filtrar por rango de edad
     if (preferences.rangoEdad) {
       const minAge = preferences.rangoEdad.min || 18
       const maxAge = preferences.rangoEdad.max || 99
@@ -101,11 +287,10 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
       })
     }
     
-    // Filter by career preference if set
+    // Filtrar por preferencia de carrera
     if (preferences.preferenciaCarrera === "misma" && currentUserCareer) {
       query["perfil.carrera"] = currentUserCareer
     } else if (preferences.preferenciaCarrera === "otra" && currentUserCareer) {
-      // If preference is "otra", exclude same career
       if (!query["$and"]) query["$and"] = []
       query["$and"].push({
         "perfil.carrera": { $ne: currentUserCareer }
@@ -113,13 +298,12 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     }
   }
 
-  // Only get users with complete profiles
+  // Solo obtener usuarios con perfiles completos
   query["perfil.nombre"] = { $exists: true, $ne: "" }
   query["perfil.fotos"] = { $exists: true, $type: "array", $ne: [] }
-  // Ensure they have preferences defined
   query["perfil.preferencias"] = { $exists: true }
 
-  // Also exclude current user by _id if it's a valid ObjectId
+  // Excluir el usuario actual por _id
   if (currentUserObjId) {
     if (!query.$and) query.$and = []
     query.$and.push({ _id: { $ne: currentUserObjId } })
@@ -127,81 +311,91 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     if (!query.$and) query.$and = []
     query.$and.push({ _id: { $ne: new ObjectId(currentUser.id) } })
   }
-
-  console.log(`[ManejadorSwipes] Query for discoverable profiles:`, JSON.stringify(query, null, 2))
   
   const usuariosCollection = db.collection("usuarios")
-  // Get more profiles initially to filter and sort in memory
   const allProfiles = await usuariosCollection.find(query).limit(limit * 3).toArray()
-  
-  console.log(`[ManejadorSwipes] Found ${allProfiles.length} candidate profiles before bidirectional filtering`)
 
-  // Bidirectional filtering: 
-  // 1. The profile must match current user's preferences (already done in query)
-  // 2. The profile must also be looking for the current user's gender
-  const matchingProfiles = allProfiles.filter((profile: any) => {
+  // Calcular edad del usuario actual
+  let currentUserAge: number | null = null
+  if (currentUser.perfil?.fechaNacimiento) {
+    const birthDate = new Date(currentUser.perfil.fechaNacimiento)
+    if (!isNaN(birthDate.getTime())) {
+      const today = new Date()
+      currentUserAge = today.getFullYear() - birthDate.getFullYear()
+      const monthDiff = today.getMonth() - birthDate.getMonth()
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        currentUserAge--
+      }
+    }
+  }
+
+  // Aplicar filtros mínimos obligatorios (matching bidireccional)
+  const profilesPassingThreshold = allProfiles.filter((profile: any) => {
     const profilePreferences = profile.perfil?.preferencias
     if (!profilePreferences) return false
 
     const profileGenderSeeking = profilePreferences.generoBuscado
     
-    // Check if the profile is looking for the current user's gender
-    // If profile wants "todos", it's valid
-    // If profile wants a specific gender, it must match current user's gender
+    // Umbral mínimo 1: El perfil debe estar buscando el género del usuario actual
     if (!profileGenderSeeking || profileGenderSeeking === "") {
-      return false // No preference defined
+      return false
     }
     
-    if (profileGenderSeeking === "todos") {
-      return true // Profile accepts all genders
-    }
+    const genderMatch = profileGenderSeeking === "todos" || 
+      profileGenderSeeking.toLowerCase() === currentUserGender.toLowerCase()
     
-    // Profile is looking for a specific gender, must match current user's gender
-    return profileGenderSeeking.toLowerCase() === currentUserGender.toLowerCase()
-  })
-
-  console.log(`[ManejadorSwipes] Found ${matchingProfiles.length} profiles after bidirectional filtering`)
-
-  // Sort profiles by priority:
-  // 1. Profiles that seek specific gender (not "todos") - higher priority
-  // 2. Profiles with same career (if applicable)
-  matchingProfiles.sort((a: any, b: any) => {
-    const aPrefs = a.perfil?.preferencias || {}
-    const bPrefs = b.perfil?.preferencias || {}
-    const aGenderSeeking = aPrefs.generoBuscado || ""
-    const bGenderSeeking = bPrefs.generoBuscado || ""
-    const aCareer = a.perfil?.carrera || ""
-    const bCareer = b.perfil?.carrera || ""
-
-    // Priority 1: Gender preference specificity
-    // Profiles seeking specific gender (not "todos") get higher priority
-    const aSpecificGender = aGenderSeeking !== "todos" && aGenderSeeking !== ""
-    const bSpecificGender = bGenderSeeking !== "todos" && bGenderSeeking !== ""
+    if (!genderMatch) return false
     
-    if (aSpecificGender && !bSpecificGender) return -1
-    if (!aSpecificGender && bSpecificGender) return 1
-
-    // Priority 2: Same career (if current user has a career)
-    if (currentUserCareer) {
-      const aSameCareer = aCareer.toLowerCase() === currentUserCareer.toLowerCase()
-      const bSameCareer = bCareer.toLowerCase() === currentUserCareer.toLowerCase()
+    // Umbral mínimo 2: La edad del usuario actual debe estar en el rango buscado por el perfil
+    if (currentUserAge !== null && profilePreferences.rangoEdad) {
+      const profileMinAge = profilePreferences.rangoEdad.min || 18
+      const profileMaxAge = profilePreferences.rangoEdad.max || 99
       
-      if (aSameCareer && !bSameCareer) return -1
-      if (!aSameCareer && bSameCareer) return 1
+      if (currentUserAge < profileMinAge || currentUserAge > profileMaxAge) {
+        return false
+      }
     }
-
-    // Otherwise maintain original order (or random)
-    return 0
+    
+    return true
   })
 
-  // Limit results
-  const profiles = matchingProfiles.slice(0, limit)
-  
-  console.log(`[ManejadorSwipes] Returning ${profiles.length} prioritized discoverable profiles`)
+  // Calcular score de descubribilidad para cada perfil
+  const profilesWithScores = profilesPassingThreshold.map((profile: any) => {
+    const score = calculateDiscoverableScore(profile, currentUser)
+    return {
+      profile,
+      discoverableScore: score,
+    }
+  })
 
-  // Check if these users have liked the current user (for hasLikedYou)
-  const profileIds = profiles
-    .map((p) => (p._id ? p._id.toString() : ""))
+  // Filtrar por umbral mínimo de score (30%)
+  const profilesAboveThreshold = profilesWithScores.filter(
+    (item) => item.discoverableScore >= MIN_SCORE_THRESHOLD
+  )
+
+  // Ordenar por score de descubribilidad (mayor a menor)
+  profilesAboveThreshold.sort((a, b) => b.discoverableScore - a.discoverableScore)
+
+  // Limitar resultados
+  const profilesWithScoresFinal = profilesAboveThreshold.slice(0, limit)
+
+  // Imprimir perfiles ordenados por score en consola
+  console.log(`\nPERFILES ORDENADOS POR SCORE (${profilesWithScoresFinal.length} perfiles):`)
+  console.log('═'.repeat(80))
+  profilesWithScoresFinal.forEach((item, index) => {
+    const profile = item.profile
+    const scorePercent = (item.discoverableScore * 100).toFixed(2)
+    console.log(`${index + 1}. ${profile.perfil?.nombre || 'N/A'} (${profile.email || 'N/A'})`)
+    console.log(`   Score: ${scorePercent}% | Género: ${profile.perfil?.genero || 'N/A'} | Edad: ${profile.perfil?.fechaNacimiento ? (new Date().getFullYear() - new Date(profile.perfil.fechaNacimiento).getFullYear()) : 'N/A'} | Carrera: ${profile.perfil?.carrera || 'N/A'}`)
+  })
+  console.log('═'.repeat(80) + '\n')
+
+  // Verificar si estos usuarios han dado like al usuario actual
+  const profileIds = profilesWithScoresFinal
+    .map((item) => {
+      const p = item.profile
+      return p._id ? p._id.toString() : (p.id || "")
+    })
     .filter((id) => id && ObjectId.isValid(id))
     .map((id) => new ObjectId(id))
   
@@ -220,8 +414,9 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     })
   )
 
-  // Format profiles for frontend
-  return profiles.map((profile: any) => {
+  // Formatear perfiles para el frontend, incluyendo discoverableScore
+  return profilesWithScoresFinal.map((item) => {
+    const profile = item.profile
     const profileId = profile._id?.toString() || profile.id || ""
     return {
       id: profileId,
@@ -239,13 +434,14 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
         carrera: profile.perfil?.carrera || "",
       },
       hasLikedYou: likedByUserIds.has(profileId),
+      discoverableScore: Math.round(item.discoverableScore * 100) / 100,
     }
   })
 }
 
 /**
- * Create a swipe (like or pass)
- * Returns match information if both users liked each other
+ * Crea un swipe (like o pass)
+ * Retorna información de match si ambos usuarios se dieron like mutuamente
  */
 export async function createSwipe(
   idEmisor: string,
@@ -259,14 +455,14 @@ export async function createSwipe(
   const idEmisorObj = ObjectId.isValid(idEmisor) ? new ObjectId(idEmisor) : idEmisor
   const idReceptorObj = ObjectId.isValid(idReceptor) ? new ObjectId(idReceptor) : idReceptor
 
-  // Check if swipe already exists
+  // Verificar si el swipe ya existe
   const existingSwipe = await swipesCollection.findOne({
     idEmisor: idEmisorObj,
     idReceptor: idReceptorObj,
   })
 
   if (existingSwipe) {
-    // Update existing swipe
+    // Actualizar swipe existente
     await swipesCollection.updateOne(
       { _id: existingSwipe._id },
       {
@@ -277,7 +473,7 @@ export async function createSwipe(
       }
     )
   } else {
-    // Create new swipe
+    // Crear nuevo swipe
     await swipesCollection.insertOne({
       idEmisor: idEmisorObj,
       idReceptor: idReceptorObj,
@@ -286,9 +482,9 @@ export async function createSwipe(
     })
   }
 
-  // If it's a like, check for mutual match
+  // Si es un like, verificar si hay match mutuo
   if (accion === "like") {
-    // Check if the other user has also liked this user
+    // Verificar si el otro usuario también le dio like a este usuario
     const reverseSwipe = await swipesCollection.findOne({
       idEmisor: idReceptorObj,
       idReceptor: idEmisorObj,
@@ -296,7 +492,7 @@ export async function createSwipe(
     })
 
     if (reverseSwipe) {
-      // It's a match! Create or update match
+      // ¡Es un match! Crear o actualizar match
       const existingMatch = await matchesCollection.findOne({
         participantes: {
           $all: [idEmisorObj, idReceptorObj],
@@ -304,7 +500,7 @@ export async function createSwipe(
       })
 
       if (!existingMatch) {
-        // Create new match
+        // Crear nuevo match
         await matchesCollection.insertOne({
           participantes: [idEmisorObj, idReceptorObj],
           creadoEn: new Date(),

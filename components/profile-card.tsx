@@ -10,6 +10,7 @@ import { calculateAge, getZodiacSign } from "@/lib/zodiac-utils"
 
 export interface Profile {
   id: string
+  discoverableScore: number
   nombre: string
   fechaNacimiento: string
   genero: string
@@ -42,6 +43,7 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
     const zodiac = profile?.fechaNacimiento ? getZodiacSign(new Date(profile.fechaNacimiento)) : { symbol: '', name: '' }
 
     useEffect(() => {
+      console.log('profile', profile)
       setCurrentPhotoIndex(0)
     }, [profile?.id])
 
@@ -166,9 +168,18 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
             </div>
 
             <div className="mb-6">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Grado de coincidencia</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile.discoverableScore}
+              </div>
+            </div>
+
+
+
+            <div className="mb-6">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Genero</h3>
               <div className="flex flex-wrap gap-2">
-                {profile.genero ? profile.genero.charAt(0).toUpperCase() + profile.genero.slice(1) : ''}
+                {profile.genero}
               </div>
             </div>
 
