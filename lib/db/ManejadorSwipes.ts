@@ -4,7 +4,8 @@ import { getProfileById } from "./ManejadorUsuarios"
 
 /**
  * Get profiles that the user hasn't swiped on yet
- * Filters by user preferences and excludes already swiped profiles
+ * Filters by user preferences with bidirectional matching and excludes already swiped profiles
+ * Prioritizes by gender preference specificity and matching career
  */
 export async function getDiscoverableProfiles(userId: string, limit: number = 50) {
   const db = await getDb()
@@ -16,6 +17,8 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   }
 
   const currentUserObjId = ObjectId.isValid(userId) ? new ObjectId(userId) : null
+  const currentUserGender = currentUser.perfil.genero || ""
+  const currentUserCareer = currentUser.perfil.carrera || ""
   
   // Get all swipes from current user (profiles they've already seen)
   const swipesCollection = db.collection("swipes")
@@ -76,7 +79,8 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   // Filter by user preferences if available
   const preferences = currentUser.perfil.preferencias
   if (preferences) {
-    // Filter by gender preference
+    // Filter by gender preference (what current user is looking for)
+    // If "todos", we don't filter by gender but still apply other filters
     if (preferences.generoBuscado && preferences.generoBuscado !== "todos") {
       query["perfil.genero"] = preferences.generoBuscado
     }
@@ -98,14 +102,22 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
     }
     
     // Filter by career preference if set
-    if (preferences.preferenciaCarrera === "misma" && currentUser.perfil.carrera) {
-      query["perfil.carrera"] = currentUser.perfil.carrera
+    if (preferences.preferenciaCarrera === "misma" && currentUserCareer) {
+      query["perfil.carrera"] = currentUserCareer
+    } else if (preferences.preferenciaCarrera === "otra" && currentUserCareer) {
+      // If preference is "otra", exclude same career
+      if (!query["$and"]) query["$and"] = []
+      query["$and"].push({
+        "perfil.carrera": { $ne: currentUserCareer }
+      })
     }
   }
 
   // Only get users with complete profiles
   query["perfil.nombre"] = { $exists: true, $ne: "" }
   query["perfil.fotos"] = { $exists: true, $type: "array", $ne: [] }
+  // Ensure they have preferences defined
+  query["perfil.preferencias"] = { $exists: true }
 
   // Also exclude current user by _id if it's a valid ObjectId
   if (currentUserObjId) {
@@ -119,9 +131,73 @@ export async function getDiscoverableProfiles(userId: string, limit: number = 50
   console.log(`[ManejadorSwipes] Query for discoverable profiles:`, JSON.stringify(query, null, 2))
   
   const usuariosCollection = db.collection("usuarios")
-  const profiles = await usuariosCollection.find(query).limit(limit).toArray()
+  // Get more profiles initially to filter and sort in memory
+  const allProfiles = await usuariosCollection.find(query).limit(limit * 3).toArray()
   
-  console.log(`[ManejadorSwipes] Found ${profiles.length} discoverable profiles`)
+  console.log(`[ManejadorSwipes] Found ${allProfiles.length} candidate profiles before bidirectional filtering`)
+
+  // Bidirectional filtering: 
+  // 1. The profile must match current user's preferences (already done in query)
+  // 2. The profile must also be looking for the current user's gender
+  const matchingProfiles = allProfiles.filter((profile: any) => {
+    const profilePreferences = profile.perfil?.preferencias
+    if (!profilePreferences) return false
+
+    const profileGenderSeeking = profilePreferences.generoBuscado
+    
+    // Check if the profile is looking for the current user's gender
+    // If profile wants "todos", it's valid
+    // If profile wants a specific gender, it must match current user's gender
+    if (!profileGenderSeeking || profileGenderSeeking === "") {
+      return false // No preference defined
+    }
+    
+    if (profileGenderSeeking === "todos") {
+      return true // Profile accepts all genders
+    }
+    
+    // Profile is looking for a specific gender, must match current user's gender
+    return profileGenderSeeking.toLowerCase() === currentUserGender.toLowerCase()
+  })
+
+  console.log(`[ManejadorSwipes] Found ${matchingProfiles.length} profiles after bidirectional filtering`)
+
+  // Sort profiles by priority:
+  // 1. Profiles that seek specific gender (not "todos") - higher priority
+  // 2. Profiles with same career (if applicable)
+  matchingProfiles.sort((a: any, b: any) => {
+    const aPrefs = a.perfil?.preferencias || {}
+    const bPrefs = b.perfil?.preferencias || {}
+    const aGenderSeeking = aPrefs.generoBuscado || ""
+    const bGenderSeeking = bPrefs.generoBuscado || ""
+    const aCareer = a.perfil?.carrera || ""
+    const bCareer = b.perfil?.carrera || ""
+
+    // Priority 1: Gender preference specificity
+    // Profiles seeking specific gender (not "todos") get higher priority
+    const aSpecificGender = aGenderSeeking !== "todos" && aGenderSeeking !== ""
+    const bSpecificGender = bGenderSeeking !== "todos" && bGenderSeeking !== ""
+    
+    if (aSpecificGender && !bSpecificGender) return -1
+    if (!aSpecificGender && bSpecificGender) return 1
+
+    // Priority 2: Same career (if current user has a career)
+    if (currentUserCareer) {
+      const aSameCareer = aCareer.toLowerCase() === currentUserCareer.toLowerCase()
+      const bSameCareer = bCareer.toLowerCase() === currentUserCareer.toLowerCase()
+      
+      if (aSameCareer && !bSameCareer) return -1
+      if (!aSameCareer && bSameCareer) return 1
+    }
+
+    // Otherwise maintain original order (or random)
+    return 0
+  })
+
+  // Limit results
+  const profiles = matchingProfiles.slice(0, limit)
+  
+  console.log(`[ManejadorSwipes] Returning ${profiles.length} prioritized discoverable profiles`)
 
   // Check if these users have liked the current user (for hasLikedYou)
   const profileIds = profiles

@@ -165,6 +165,13 @@ export function ProfileCard({ profile, onLike, onDislike, swipeDirection }: Prof
               </div>
             </div>
 
+            <div className="mb-6">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Genero</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile.genero.capitalize()}
+              </div>
+            </div>
+
             <div>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Características
